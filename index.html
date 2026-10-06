@@ -67,9 +67,14 @@
     <label>開始時間<input id="eventStartTime" type="time" required></label>
     <label>登記截止<input id="eventRegClose" type="time"></label>
     <label>級別<select id="eventLevel"><option value="3400">3400</option><option value="6600">6600</option><option value="11000">11000</option><option value="21500">21500</option><option value="32000">32000</option><option value="custom">自訂</option></select></label>
-    <label>買入金額<input id="eventBuyin" type="number" min="0" value="3000"></label>
-    <label>行政費<input id="eventFee" type="number" min="0" value="400"></label>
+    <label>首次買入總額<input id="eventBuyinTotal" type="number" min="0" value="3400"></label>
+    <label>首次買入行政費<input id="eventBuyinAdmin" type="number" min="0" value="400"></label>
+    <label>重買總額<input id="eventRebuyTotal" type="number" min="0" value="3400"></label>
+    <label>重買行政費<input id="eventRebuyAdmin" type="number" min="0" value="400"></label>
+    <label>第幾組起免行政費<input id="eventFreeAdminFrom" type="number" min="2" value="11"><small>預設第 11 組起全免；第 2–10 組行政費半價</small></label>
     <label>JP 提撥 %<input id="eventJP" type="number" min="0" step="0.1" value="3"></label>
+    <label>ICM 提撥 %<input id="eventICMRate" type="number" min="0" step="0.1" value="3"></label>
+    <label>ICM 取整單位<input id="eventICMRound" type="number" min="1" step="100" value="100"><small>預設每 100 元取整</small></label>
    </div>
    <div id="eventFormState" class="form-state"></div>
    <div class="modal-actions"><button type="button" data-close-event>取消</button><button class="gold" type="submit">建立賽事</button></div>
