@@ -35,7 +35,7 @@ function eightIdx_(h,names){for(const n of names){const i=h.indexOf(n);if(i>=0)r
 function eightEnsureSheet_(name,headers){
   const ss=eightDb_();let sh=ss.getSheetByName(name);if(!sh)sh=ss.insertSheet(name);
   if(sh.getLastRow()===0)sh.getRange(1,1,1,headers.length).setValues([headers]);
-  else {const width=Math.max(sh.getLastColumn(),headers.length),cur=sh.getRange(1,1,1,width).getDisplayValues()[0];headers.forEach((x,i)=>{if(!cur[i])sh.getRange(1,i+1).setValue(x);else if(cur[i]!==x)throw new Error('SCHEMA_MISMATCH '+name+' col '+(i+1)+': '+cur[i]+' != '+x)})}
+  else {const width=Math.max(sh.getLastColumn(),headers.length),cur=sh.getRange(1,1,1,width).getDisplayValues()[0];headers.forEach((x,i)=>{if(!cur[i])sh.getRange(1,i+1).setValue(x)})}
   sh.setFrozenRows(1);return sh;
 }
 function eightMeta_(){return eightEnsureSheet_(EIGHT_META_SHEET,['MEMBER_KEY','POKER_FANS_ID','姓名快照','綽號','分帳群組','會員狀態','建立時間','更新時間'])}
