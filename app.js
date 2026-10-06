@@ -126,12 +126,23 @@ function renderWorkspace(){
  const k=[['參賽人數',WORKSPACE_PLAYERS.length],['重買人數',WORKSPACE_PLAYERS.filter(p=>Number(p.rebuy||0)>0).length],['總組數',totals.groups],['總買入',money(totals.gross)],['總優惠',money(discounts)],['總獎金',money(prize)],['實收行政費',money(Math.max(0,adminGross-discounts))],['JP',money(jp)]];
  document.querySelector('#workspaceKpis').innerHTML=k.map(x=>'<div class="card event-kpi"><small>'+x[0]+'</small><b>'+x[1]+'</b></div>').join('');
 }
+function syncWorkspaceEventSummaryLocal(){
+ if(!WORKSPACE_EVENT)return;
+ let totals={buyin:0,rebuy:0,groups:0,gross:0,early:0,late:0,rd:0,overbuy:0,other:0};
+ WORKSPACE_PLAYERS.forEach(p=>{const c=eventCalcPlayer(p,WORKSPACE_EVENT);for(const k of Object.keys(totals))totals[k]+=Number(c[k]||0)});
+ const e=WORKSPACE_EVENT,adminGross=totals.buyin*Number(e.buyinAdmin||0)+totals.rebuy*Number(e.rebuyAdmin||0);
+ const prizeBase=totals.buyin*Math.max(0,Number(e.buyinTotal||0)-Number(e.buyinAdmin||0))+totals.rebuy*Math.max(0,Number(e.rebuyTotal||0)-Number(e.rebuyAdmin||0));
+ const discounts=totals.early+totals.late+totals.rd+totals.overbuy+totals.other,unit=Math.max(1,Number(e.icmRound||100));
+ e.summary={participants:WORKSPACE_PLAYERS.length,rebuyPeople:WORKSPACE_PLAYERS.filter(p=>Number(p.rebuy||0)>0).length,totalEntries:totals.groups,totalGross:totals.gross,earlyDiscount:totals.early,lateDiscount:totals.late,rebuyDiscount:totals.rd,entryDiscount:totals.overbuy,otherDiscount:totals.other,prizePool:Math.floor((prizeBase*(1-Number(e.icmRate||0)/100))/unit)*unit,adminNet:Math.max(0,adminGross-discounts),jp:Math.floor(adminGross*Number(e.jpRate||0)/100)};
+ const date=e.businessDate||document.querySelector('#eventDate').value||businessDate();
+ try{localStorage.setItem('eightEvents:'+date,JSON.stringify(window.EIGHT_EVENTS||[]))}catch(_){}
+}
 async function addWorkspacePlayer(){
  const key=document.querySelector('#workspaceMemberSelect').value;if(!key)return;
  const btn=document.querySelector('#workspaceAddPlayer'),m=MEMBER_ROWS.find(x=>x.memberKey===key),group=document.querySelector('#workspaceGroup').value.trim()||m?.group||'';
  if(!m||WORKSPACE_PLAYERS.some(x=>x.memberKey===key))return;
  const optimistic={memberKey:key,memberId:m.memberId,name:m.name,buyin:1,rebuy:0,group,chips:0};
- WORKSPACE_PLAYERS.push(optimistic);renderWorkspace();filterWorkspaceMembers('');try{localStorage.setItem('eightEventPlayers:'+ACTIVE_EVENT,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}
+ WORKSPACE_PLAYERS.push(optimistic);renderWorkspace();syncWorkspaceEventSummaryLocal();filterWorkspaceMembers('');try{localStorage.setItem('eightEventPlayers:'+ACTIVE_EVENT,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}
  document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';btn.disabled=true;
  try{
    const eventId=ACTIVE_EVENT,r=await api('eight.eventPlayers.add',{eventId:ACTIVE_EVENT,memberKey:key});
@@ -160,6 +171,7 @@ function returnToEventList(){
  const eventId=ACTIVE_EVENT,keys=[...WS_PENDING_PATCH.keys()],events=document.querySelector('#events'),workspace=document.querySelector('#eventWorkspace');
  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));if(events)events.classList.add('active');if(workspace)workspace.classList.remove('active');
  document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('active',x.dataset.page==='events'));const t=document.querySelector('#pageTitle');if(t)t.textContent=pages.events;
+ syncWorkspaceEventSummaryLocal();renderEvents(window.EIGHT_EVENTS||[]);
  ACTIVE_EVENT=null;WORKSPACE_EVENT=null;
  if(eventId&&keys.length)Promise.allSettled(keys.map(key=>flushWorkspacePlayerForEvent(eventId,key))).catch(console.error)
 }
@@ -188,9 +200,9 @@ document.querySelector('#workspacePlayerRows').addEventListener('change',e=>{
  else if(e.target.classList.contains('ws-other')){p.otherDiscount=Number(e.target.value||0);patch.otherDiscount=p.otherDiscount}
  else if(e.target.classList.contains('ws-group')){p.group=e.target.value.trim();patch.group=p.group}
  else if(e.target.classList.contains('ws-chips')){p.chips=Number(e.target.value||0);patch.chips=p.chips}else return;
- renderWorkspace();try{localStorage.setItem('eightEventPlayers:'+ACTIVE_EVENT,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}queueWorkspacePlayerSave(key,patch)
+ renderWorkspace();syncWorkspaceEventSummaryLocal();try{localStorage.setItem('eightEventPlayers:'+ACTIVE_EVENT,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}queueWorkspacePlayerSave(key,patch)
 });
-document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];if(WS_SAVE_TIMERS.has(key))clearTimeout(WS_SAVE_TIMERS.get(key));WS_SAVE_TIMERS.delete(key);WS_PENDING_PATCH.delete(key);WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key}).then(()=>{loadEvents()}).catch(err=>{WORKSPACE_PLAYERS=old;renderWorkspace();alert('移除失敗：'+err.message)})});
+document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];if(WS_SAVE_TIMERS.has(key))clearTimeout(WS_SAVE_TIMERS.get(key));WS_SAVE_TIMERS.delete(key);WS_PENDING_PATCH.delete(key);WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();syncWorkspaceEventSummaryLocal();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key}).then(()=>{loadEvents()}).catch(err=>{WORKSPACE_PLAYERS=old;renderWorkspace();syncWorkspaceEventSummaryLocal();alert('移除失敗：'+err.message)})});
 document.querySelector('#workspaceSettle').addEventListener('click',async()=>{
  const btn=document.querySelector('#workspaceSettle');btn.disabled=true;
  try{
