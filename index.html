@@ -40,7 +40,7 @@
  </div>
 </section>
 <section id="members" class="page">
- <div class="toolbar card"><input class="search" placeholder="搜尋姓名 / POKERFANS ID / 綽號 / 分帳群組"><div><button>＋ 新增會員</button><button>欄位設定</button></div></div>
+ <div class="toolbar card"><input id="memberSearch" class="search" placeholder="搜尋姓名 / POKERFANS ID / 綽號 / 分帳群組"><div><button id="addMemberBtn" class="gold">＋ 新增會員</button><button>欄位設定</button></div></div>
  <article class="card table-card"><div class="card-title"><h2>會員資料</h2><span>Form Responses 1 雙向同步</span></div><table><thead><tr><th>會員編號</th><th>姓名</th><th>綽號</th><th>分帳群組</th><th>參賽場次</th><th>總組數</th><th>盈虧</th><th>消費佔比</th><th>最近到店</th><th></th></tr></thead><tbody><tr><td colspan="10" class="empty">等待 Google Sheet API 連線</td></tr></tbody></table></article>
 </section>
 <section id="events" class="page">
@@ -56,5 +56,25 @@
 <section id="devices" class="page"><article class="card"><div class="card-title"><h2>DISPLAY 設備</h2><button class="gold">＋ 新增設備</button></div><p class="muted">每台設備可獨立設定活動、輪播順序、各頁秒數、字體大小、排名筆數、姓名/會員編號與顯示欄位。</p><div class="empty">尚未連接設備</div></article></section>
 <section id="settings" class="page"><div class="grid2"><article class="card"><h2>營業日設定</h2><div class="form-row"><label>開始時間<input type="time" id="businessStart" value="16:00"></label><label>結束時間<input type="time" id="businessEnd" value="07:00"></label></div><p class="muted">跨午夜資料仍歸屬前一個營業日。所有賽事、帳務、活動與排行榜共用同一規則。</p><button class="gold" id="saveBusinessHours">儲存設定</button><span id="businessSaveState" class="save-state"></span></article><article class="card"><h2>資料來源</h2><p><b>Google Sheet</b><br>Form Responses 1 = 會員主表<br>EPC_DATA = 舊資料 migration source</p><p class="status">● Apps Script API 尚未部署</p></article></div></section>
 </main>
+<div id="memberModal" class="modal" hidden>
+ <div class="modal-backdrop" data-close-member></div>
+ <div class="modal-card card">
+  <div class="card-title"><h2 id="memberModalTitle">新增會員</h2><button type="button" data-close-member>✕</button></div>
+  <form id="memberForm">
+   <input type="hidden" id="memberKey">
+   <div class="member-form-grid">
+    <label>POKER FANS ID<input id="memberId" required autocomplete="off"></label>
+    <label>姓名<input id="memberName" required autocomplete="off"></label>
+    <label>綽號<input id="memberNickname" autocomplete="off"></label>
+    <label>分帳群組<input id="memberGroup" autocomplete="off"></label>
+    <label>出生年月日<input id="memberBirth" autocomplete="off" placeholder="例如 1993/01/15"></label>
+    <label>手機號碼<input id="memberPhone" autocomplete="off"></label>
+    <label class="wide">地址<input id="memberAddress" autocomplete="off"></label>
+   </div>
+   <div id="memberFormState" class="form-state"></div>
+   <div class="modal-actions"><button type="button" data-close-member>取消</button><button id="memberSaveBtn" class="gold" type="submit">儲存會員</button></div>
+  </form>
+ </div>
+</div>
 <script src="app.js"></script>
 </body></html>
