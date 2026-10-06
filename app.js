@@ -116,8 +116,8 @@ document.querySelector('#workspaceMemberSearch').addEventListener('keydown',e=>{
 document.querySelector('#workspaceAddPlayer').addEventListener('click',addWorkspacePlayer);
 async function flushWorkspacePlayer(key){
  const patch=WS_PENDING_PATCH.get(key);if(!patch||!ACTIVE_EVENT)return;WS_PENDING_PATCH.delete(key);WS_SAVE_TIMERS.delete(key);
- try{await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch:patch})}
- catch(err){alert('更新失敗：'+err.message);await loadWorkspacePlayers()}
+ try{const p=WORKSPACE_PLAYERS.find(x=>x.memberKey===key);if(p&&p.revision)patch.expectedRevision=p.revision;const r=await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch:patch});if(p&&r.player&&r.player.revision)p.revision=r.player.revision}
+ catch(err){if(err.message==='STALE_WRITE')alert('資料已被其他裝置更新，已重新載入最新資料');else alert('更新失敗：'+err.message);await loadWorkspacePlayers()}
 }
 function queueWorkspacePlayerSave(key,patch){
  WS_PENDING_PATCH.set(key,Object.assign({},WS_PENDING_PATCH.get(key)||{},patch));
@@ -140,3 +140,6 @@ document.querySelector('#workspaceSettle').addEventListener('click',()=>alert('�
 
 document.querySelector('#eventList').addEventListener('click',e=>{const b=e.target.closest('.delete-event');if(!b)return;if(!confirm('確定刪除此賽事？'))return;const id=b.dataset.id,old=[...(window.EIGHT_EVENTS||[])];window.EIGHT_EVENTS=old.filter(x=>x.eventId!==id);renderEvents(window.EIGHT_EVENTS);api('eight.events.delete',{eventId:id}).catch(err=>{window.EIGHT_EVENTS=old;renderEvents(old);alert('刪除失敗：'+err.message)})});
 loadEvents();
+
+window.addEventListener('offline',()=>{const el=document.querySelector('#dbStatus');if(el){el.textContent='資料庫：網路離線';el.className='bad'}});
+window.addEventListener('online',()=>{boot()});
