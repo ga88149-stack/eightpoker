@@ -131,12 +131,20 @@ function eightCreateEvent_(e){
 }
 function eightFindEventRow_(id){const sh=eightEvents_(),v=sh.getDataRange().getDisplayValues();for(let i=1;i<v.length;i++)if(v[i][0]===id)return {sh,row:i+1,data:v[i]};throw new Error('EVENT_NOT_FOUND')}
 function eightUpdateEvent_(id,p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{const f=eightFindEventRow_(id),map={businessDate:2,name:3,startTime:4,regClose:5,level:6,buyin:7,fee:8,jpRate:9,status:10,buyinTotal:13,buyinAdmin:14,rebuyTotal:15,rebuyAdmin:16,freeAdminFrom:17,icmRate:18,icmRound:19};Object.keys(map).forEach(k=>{if(k in p)f.sh.getRange(f.row,map[k]).setValue(p[k])});f.sh.getRange(f.row,12).setValue(new Date());return {eventId:id}}finally{lock.releaseLock()}}
-function eightDeleteEvent_(id){const lock=LockService.getScriptLock();lock.waitLock(10000);try{const f=eightFindEventRow_(id);f.sh.getRange(f.row,10).setValue('deleted');f.sh.getRange(f.row,12).setValue(new Date());return {deleted:true}}finally{lock.releaseLock()}}
+function eightDeleteEvent_(id){const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');try{const f=eightFindEventRow_(id),r=f.sh.getRange(f.row,1,1,19).getValues()[0];r[9]='deleted';r[11]=new Date();f.sh.getRange(f.row,1,1,19).setValues([r]);SpreadsheetApp.flush();return {deleted:true}}finally{lock.releaseLock()}}
 function eightListEventPlayers_(eventId){
   if(!eventId)return [];const sh=eightPlayers_();if(sh.getLastRow()<2)return [];return sh.getRange(2,1,sh.getLastRow()-1,18).getDisplayValues().filter(r=>r[0]===eventId&&r[8]!=='deleted').map(r=>({eventId:r[0],memberKey:r[1],memberId:r[2],name:r[3],entries:Number(r[4]||1),discount:Number(r[5]||0),group:r[6]||'',chips:Number(r[7]||0),status:r[8]||'active',earlyDiscount:Number(r[11]||0),lateDiscount:Number(r[12]||0),rebuyDiscount:Number(r[13]||0),entryDiscount:Number(r[14]||0),otherDiscount:Number(r[15]||0),buyin:Number(r[16]||1),rebuy:Number(r[17]||Math.max(0,Number(r[4]||1)-1))}))
 }
 function eightAddEventPlayer_(eventId,memberKey){
-  const lock=LockService.getScriptLock();lock.waitLock(10000);try{eightFindEventRow_(eventId);const f=eightFindMember_(memberKey),existing=eightListEventPlayers_(eventId);if(existing.some(x=>x.memberKey===memberKey))throw new Error('PLAYER_ALREADY_IN_EVENT');const s=eightMemberSource_(),rows=eightFindSourceRowsById_(s,f.id);if(rows.length!==1)throw new Error('MEMBER_NOT_FOUND');const src=s.v[rows[0]-1],name=s.c.name>=0?src[s.c.name]:'',now=new Date();eightPlayers_().appendRow([eventId,memberKey,f.id,name,1,0,f.meta[4]||'',0,'active',now,now,0,0,0,0,0,1,0]);return {eventId,memberKey,memberId:f.id,name,entries:1,buyin:1,rebuy:0,discount:0,group:f.meta[4]||'',chips:0}}finally{lock.releaseLock()}
+  const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');
+  try{
+    eightFindEventRow_(eventId);const f=eightFindMember_(memberKey),sh=eightPlayers_(),last=sh.getLastRow();
+    if(last>1){const v=sh.getRange(2,1,last-1,9).getDisplayValues();for(let i=0;i<v.length;i++)if(v[i][0]===eventId&&v[i][1]===memberKey&&v[i][8]!=='deleted')throw new Error('PLAYER_ALREADY_IN_EVENT')}
+    const s=eightMemberSource_(),rows=eightFindSourceRowsById_(s,f.id);if(rows.length!==1)throw new Error('MEMBER_NOT_FOUND');
+    const src=s.v[rows[0]-1],name=s.c.name>=0?src[s.c.name]:'',now=new Date(),row=Math.max(2,last+1);
+    sh.getRange(row,1,1,18).setValues([[eventId,memberKey,f.id,name,1,0,f.meta[4]||'',0,'active',now,now,0,0,0,0,0,1,0]]);
+    SpreadsheetApp.flush();return {eventId:eventId,memberKey:memberKey,memberId:f.id,name:name,entries:1,buyin:1,rebuy:0,discount:0,group:f.meta[4]||'',chips:0}
+  }finally{lock.releaseLock()}
 }
 function eightFindPlayerRow_(eventId,key){const sh=eightPlayers_(),v=sh.getDataRange().getDisplayValues();for(let i=1;i<v.length;i++)if(v[i][0]===eventId&&v[i][1]===key&&v[i][8]!=='deleted')return {sh,row:i+1};throw new Error('EVENT_PLAYER_NOT_FOUND')}
 function eightUpdateEventPlayer_(eventId,key,p){
@@ -156,7 +164,7 @@ function eightUpdateEventPlayer_(eventId,key,p){
     return {eventId,memberKey:key,buyin,rebuy,entries:buyin+rebuy}
   }finally{lock.releaseLock()}
 }
-function eightDeleteEventPlayer_(eventId,key){const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');try{const f=eightFindPlayerRow_(eventId,key);f.sh.deleteRow(f.row);SpreadsheetApp.flush();return {deleted:true}}finally{lock.releaseLock()}}
+function eightDeleteEventPlayer_(eventId,key){const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');try{const f=eightFindPlayerRow_(eventId,key),r=f.sh.getRange(f.row,1,1,18).getValues()[0];r[8]='deleted';r[10]=new Date();f.sh.getRange(f.row,1,1,18).setValues([r]);SpreadsheetApp.flush();return {deleted:true}}finally{lock.releaseLock()}}
 function eightBootstrap_(){
   const members=eightListMembers_(),settings=eightSettings_(),now=new Date();let monthNew=0;
   members.forEach(m=>{const d=new Date(m.timestamp);if(!isNaN(d)&&d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth())monthNew++});
