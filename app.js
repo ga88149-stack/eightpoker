@@ -38,7 +38,8 @@ async function boot(){
    else setSync('資料庫：連線失敗',true)
  }
 }
-document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelector('#'+b.dataset.page).classList.add('active');document.querySelector('#pageTitle').textContent=pages[b.dataset.page]}));
+function goPage(page){document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===page));const t=document.querySelector('#pageTitle');if(t&&pages[page])t.textContent=pages[page]}
+document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>goPage(b.dataset.page)));
 document.querySelector('#themeBtn').addEventListener('click',()=>{const dark=document.body.dataset.theme==='dark';document.body.dataset.theme=dark?'light':'dark';document.querySelector('#themeBtn').textContent=dark?'☾ 深色模式':'☀ 一般模式';localStorage.setItem('eightTheme',document.body.dataset.theme)});
 document.body.dataset.theme=localStorage.getItem('eightTheme')||'dark';
 document.querySelector('#businessStart').addEventListener('change',refreshBusinessDay);document.querySelector('#businessEnd').addEventListener('change',refreshBusinessDay);
@@ -82,7 +83,7 @@ function eventCalcPlayer(p,e){
  const discount=early+late+rd+overbuy+other;
  return {buyin,rebuy,groups,gross,early,late,rd,overbuy,other,discount,paid:Math.max(0,gross-discount)};
 }
-function showOnlyPage(id){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===id))}
+function showOnlyPage(id){goPage(id)}
 async function openEventWorkspace(id){
  WORKSPACE_EVENT=(window.EIGHT_EVENTS||[]).find(x=>x.eventId===id);if(!WORKSPACE_EVENT)return;
  ACTIVE_EVENT=id;try{WORKSPACE_PLAYERS=JSON.parse(localStorage.getItem('eightEventPlayers:'+id)||'[]')}catch(_){WORKSPACE_PLAYERS=[]}
@@ -131,7 +132,13 @@ async function addWorkspacePlayer(){
  }finally{btn.disabled=false}
 }
 document.querySelector('#eventList').addEventListener('click',e=>{const b=e.target.closest('.enter-event');if(b){openEventWorkspace(b.dataset.id)}});
-document.querySelector('#backToEvents').addEventListener('click',()=>{const eventId=ACTIVE_EVENT,keys=[...WS_PENDING_PATCH.keys()];showOnlyPage('events');ACTIVE_EVENT=null;WORKSPACE_EVENT=null;Promise.allSettled(keys.map(key=>flushWorkspacePlayerForEvent(eventId,key))).then(()=>loadEvents());loadEvents()});
+function returnToEventList(){
+ const eventId=ACTIVE_EVENT,keys=[...WS_PENDING_PATCH.keys()];
+ goPage('events');ACTIVE_EVENT=null;WORKSPACE_EVENT=null;
+ setTimeout(()=>loadEvents(),0);
+ if(eventId&&keys.length)Promise.allSettled(keys.map(key=>flushWorkspacePlayerForEvent(eventId,key))).then(()=>loadEvents())
+}
+document.querySelector('#backToEvents').onclick=returnToEventList;
 document.querySelector('#workspaceRefresh').addEventListener('click',loadWorkspacePlayers);
 document.querySelector('#workspaceMemberSearch').addEventListener('input',e=>filterWorkspaceMembers(e.target.value));
 document.querySelector('#workspaceMemberSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addWorkspacePlayer()}});
