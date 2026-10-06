@@ -13,6 +13,8 @@ function doGet() {
 function doPost(e) {
   try {
     const req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    // Eight Poker V1 authoritative API. Keep legacy actions below for migration only.
+    if (String(req.action || '').indexOf('eight.') === 0) return respond(eightPokerApi_(req));
     switch (req.action) {
       case 'bootstrap': return respond(bootstrap());
       case 'members.meta.init': return respond(initMemberMeta());
