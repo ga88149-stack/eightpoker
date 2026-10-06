@@ -4,6 +4,7 @@
  */
 const MEMBER_SHEET = 'Form Responses 1';
 const SETTINGS_SHEET = 'EPC_系統設定';
+const MEMBER_META_SHEET = 'EIGHT_MEMBER_META';
 
 function doGet() {
   return respond({ok:true, service:'Eight Poker API', version:'1.0'});
@@ -14,6 +15,7 @@ function doPost(e) {
     const req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     switch (req.action) {
       case 'bootstrap': return respond(bootstrap());
+      case 'members.meta.init': return respond(initMemberMeta());
       case 'members.list': return respond({ok:true, members:listMembers()});
       case 'members.create': return respond({ok:true, member:createMember(req.member || {})});
       case 'members.update': return respond({ok:true, member:updateMember(req.memberKey, req.patch || {})});
@@ -160,4 +162,71 @@ function bootstrap() {
   }).length;
   return {ok:true, settings:getSettings(), members:active,
     summary:{memberCount:active.length, monthNewMembers:monthNew}};
+}
+
+/**
+ * One-time, idempotent member metadata migration.
+ * Keeps Google Form response columns untouched.
+ */
+function initMemberMeta() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const ss = db();
+    const memberSh = ss.getSheetByName(MEMBER_SHEET);
+    if (!memberSh) throw new Error('MEMBER_SHEET_NOT_FOUND');
+
+    let metaSh = ss.getSheetByName(MEMBER_META_SHEET);
+    if (!metaSh) metaSh = ss.insertSheet(MEMBER_META_SHEET);
+
+    const headers = ['MEMBER_KEY','POKER_FANS_ID','姓名快照','綽號','分帳群組','會員狀態','建立時間','更新時間'];
+    if (metaSh.getLastRow() === 0) metaSh.getRange(1,1,1,headers.length).setValues([headers]);
+    else {
+      const current = metaSh.getRange(1,1,1,Math.max(metaSh.getLastColumn(),headers.length)).getDisplayValues()[0];
+      headers.forEach((h,i) => { if (current[i] !== h) metaSh.getRange(1,i+1).setValue(h); });
+    }
+
+    const source = memberSh.getDataRange().getDisplayValues();
+    const h = source[0] || [];
+    const idCol = columnIndex(h,['POKER FANS ID','POKERFANS ID']);
+    const nameCol = columnIndex(h,['姓名']);
+    if (idCol < 0) throw new Error('MEMBER_ID_COLUMN_NOT_FOUND');
+
+    const existingRows = metaSh.getLastRow() > 1
+      ? metaSh.getRange(2,1,metaSh.getLastRow()-1,headers.length).getDisplayValues() : [];
+    const byId = new Map();
+    existingRows.forEach((r,i) => {
+      const id = String(r[1] || '').trim();
+      if (id && !byId.has(id)) byId.set(id,{row:i+2,key:r[0]});
+    });
+
+    const append = [];
+    let existing = 0, skipped = 0;
+    const now = new Date();
+    for (let i=1; i<source.length; i++) {
+      const row = source[i];
+      if (!row.some(Boolean)) continue;
+      const id = String(row[idCol] || '').trim();
+      if (!id) { skipped++; continue; }
+      if (byId.has(id)) { existing++; continue; }
+      const key = 'M-'+Utilities.getUuid();
+      append.push([key,id,nameCol>=0?row[nameCol]:'','','','active',now,now]);
+      byId.set(id,{row:null,key:key});
+    }
+    if (append.length) metaSh.getRange(metaSh.getLastRow()+1,1,append.length,headers.length).setValues(append);
+    metaSh.setFrozenRows(1);
+    return {ok:true,sheet:MEMBER_META_SHEET,created:append.length,existing:existing,skipped:skipped,totalMeta:metaSh.getLastRow()-1};
+  } finally { lock.releaseLock(); }
+}
+
+function readMemberMetaMap_() {
+  const sh = db().getSheetByName(MEMBER_META_SHEET);
+  const map = new Map();
+  if (!sh || sh.getLastRow() < 2) return map;
+  const rows = sh.getRange(2,1,sh.getLastRow()-1,Math.max(8,sh.getLastColumn())).getDisplayValues();
+  rows.forEach(r => {
+    const id=String(r[1]||'').trim();
+    if(id) map.set(id,{memberKey:r[0],nickname:r[3]||'',group:r[4]||'',status:r[5]||'active'});
+  });
+  return map;
 }
