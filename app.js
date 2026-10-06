@@ -136,7 +136,16 @@ document.querySelector('#workspacePlayerRows').addEventListener('change',e=>{
  renderWorkspace();queueWorkspacePlayerSave(key,patch)
 });
 document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];if(WS_SAVE_TIMERS.has(key))clearTimeout(WS_SAVE_TIMERS.get(key));WS_SAVE_TIMERS.delete(key);WS_PENDING_PATCH.delete(key);WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key}).then(()=>{loadEvents()}).catch(err=>{WORKSPACE_PLAYERS=old;renderWorkspace();alert('移除失敗：'+err.message)})});
-document.querySelector('#workspaceSettle').addEventListener('click',()=>alert('下一階段接回 EPCMANAGEMENT 的 ICM / 結算頁；目前先完成賽事操作頁。'));
+document.querySelector('#workspaceSettle').addEventListener('click',async()=>{
+ const btn=document.querySelector('#workspaceSettle');btn.disabled=true;
+ try{
+   for(const key of [...WS_PENDING_PATCH.keys()])await flushWorkspacePlayer(key);
+   const r=await api('eight.events.snapshot',{eventId:ACTIVE_EVENT});
+   window.EIGHT_SETTLEMENT_SNAPSHOT=r.snapshot;
+   alert('賽事資料已確認同步，可以進入 ICM / 結算。');
+ }catch(err){alert('結算前同步失敗：'+err.message)}
+ finally{btn.disabled=false}
+});
 
 document.querySelector('#eventList').addEventListener('click',e=>{const b=e.target.closest('.delete-event');if(!b)return;if(!confirm('確定刪除此賽事？'))return;const id=b.dataset.id,old=[...(window.EIGHT_EVENTS||[])];window.EIGHT_EVENTS=old.filter(x=>x.eventId!==id);renderEvents(window.EIGHT_EVENTS);api('eight.events.delete',{eventId:id}).catch(err=>{window.EIGHT_EVENTS=old;renderEvents(old);alert('刪除失敗：'+err.message)})});
 loadEvents();
