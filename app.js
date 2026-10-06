@@ -39,7 +39,7 @@ async function boot(){
  }
 }
 function goPage(page){document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===page));const t=document.querySelector('#pageTitle');if(t&&pages[page])t.textContent=pages[page]}
-document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>goPage(b.dataset.page)));
+document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>{goPage(b.dataset.page);if(b.dataset.page==='events')loadEvents()}));
 document.querySelector('#themeBtn').addEventListener('click',()=>{const dark=document.body.dataset.theme==='dark';document.body.dataset.theme=dark?'light':'dark';document.querySelector('#themeBtn').textContent=dark?'☾ 深色模式':'☀ 一般模式';localStorage.setItem('eightTheme',document.body.dataset.theme)});
 document.body.dataset.theme=localStorage.getItem('eightTheme')||'dark';
 document.querySelector('#businessStart').addEventListener('change',refreshBusinessDay);document.querySelector('#businessEnd').addEventListener('change',refreshBusinessDay);
@@ -63,7 +63,12 @@ document.querySelector('#createEventBtn').addEventListener('click',openEventModa
 document.querySelectorAll('[data-close-event]').forEach(x=>x.addEventListener('click',closeEventModal));
 document.querySelector('#eventLevel').addEventListener('change',e=>{const p=EVENT_PRESETS[e.target.value];if(p){document.querySelector('#eventBuyinTotal').value=p[0];document.querySelector('#eventBuyinAdmin').value=p[1];document.querySelector('#eventRebuyTotal').value=p[2];document.querySelector('#eventRebuyAdmin').value=p[3]}const n=document.querySelector('#eventName'),count=(window.EIGHT_EVENTS||[]).length+1;if(/^EPC#\d+\s/.test(n.value)||!n.value.trim())n.value='EPC#'+count+' '+(e.target.value==='custom'?'自訂':e.target.value)+' 限時錦標賽'});
 function renderEvents(rows=[]){window.EIGHT_EVENTS=rows;const el=document.querySelector('#eventList');if(!rows.length){el.className='empty';el.innerHTML='目前營業日尚無賽事';return}el.className='event-list';const stat=(k,v,moneyFmt=false)=>'<div class="event-stat"><small>'+k+'</small><b>'+(moneyFmt?money(v):esc(v??0))+'</b></div>';el.innerHTML=rows.map(x=>{const z=x.summary||{};return '<div class="event-row event-row-rich"><div class="event-main"><div><b>'+esc(x.name||'未命名賽事')+'</b><small>'+esc(x.businessDate||'')+' · '+esc(x.startTime||'')+' · '+esc(x.level||'自訂')+'</small></div><div class="event-actions"><button class="secondary enter-event" data-id="'+esc(x.eventId)+'">進入</button><button class="danger delete-event" data-id="'+esc(x.eventId)+'">刪除</button></div></div><div class="event-stats">'+stat('參賽人數',z.participants||0)+stat('重買人數',z.rebuyPeople||0)+stat('總組數',z.totalEntries||0)+stat('總買入',z.totalGross||0,true)+stat('早鳥',z.earlyDiscount||0,true)+stat('晚鳥',z.lateDiscount||0,true)+stat('重買優惠',z.rebuyDiscount||0,true)+stat('組數優惠',z.entryDiscount||0,true)+stat('其他優惠',z.otherDiscount||0,true)+stat('總獎金',z.prizePool||0,true)+stat('實收行政費',z.adminNet||0,true)+stat('JP',z.jp||0,true)+'</div></div>'}).join('')}
-async function loadEvents(){try{const r=await api('eight.events.list',{businessDate:document.querySelector('#eventDate').value||businessDate()});renderEvents(r.events||[])}catch(err){if(err.message!=='UNKNOWN_ACTION')console.error(err)}}
+async function loadEvents(){
+ const date=document.querySelector('#eventDate').value||businessDate(),cacheKey='eightEvents:'+date;
+ if(!(window.EIGHT_EVENTS||[]).length){try{const cached=JSON.parse(localStorage.getItem(cacheKey)||'[]');if(cached.length)renderEvents(cached)}catch(_){}}
+ try{const r=await api('eight.events.list',{businessDate:date}),rows=r.events||[];renderEvents(rows);try{localStorage.setItem(cacheKey,JSON.stringify(rows))}catch(_){}}
+ catch(err){if(err.message!=='UNKNOWN_ACTION')console.error(err)}
+}
 document.querySelector('#eventDate').addEventListener('change',loadEvents);
 document.querySelector('#eventForm').addEventListener('submit',async e=>{e.preventDefault();const state=document.querySelector('#eventFormState');const level=document.querySelector('#eventLevel').value,count=(window.EIGHT_EVENTS||[]).length+1;let eventName=document.querySelector('#eventName').value.trim();if(!eventName)eventName='EPC#'+count+' '+(level==='custom'?'自訂':level)+' 限時錦標賽';const buyinTotal=Number(document.querySelector('#eventBuyinTotal').value||0),buyinAdmin=Number(document.querySelector('#eventBuyinAdmin').value||0),rebuyTotal=Number(document.querySelector('#eventRebuyTotal').value||0),rebuyAdmin=Number(document.querySelector('#eventRebuyAdmin').value||0);const event={name:eventName,businessDate:document.querySelector('#eventBusinessDate').value,startTime:document.querySelector('#eventStartTime').value,regClose:document.querySelector('#eventRegClose').value,level,buyin:Math.max(0,buyinTotal-buyinAdmin),fee:buyinAdmin,buyinTotal,buyinAdmin,rebuyTotal,rebuyAdmin,freeAdminFrom:Number(document.querySelector('#eventFreeAdminFrom').value||11),jpRate:Number(document.querySelector('#eventJP').value||0),icmRate:Number(document.querySelector('#eventICMRate').value||0),icmRound:Number(document.querySelector('#eventICMRound').value||100)};state.textContent='建立中…';try{const created=await api('eight.events.create',{event});state.textContent='建立成功';state.className='form-state good';document.querySelector('#eventDate').value=event.businessDate;closeEventModal();if(created.event){window.EIGHT_EVENTS=[...(window.EIGHT_EVENTS||[]),created.event];renderEvents(window.EIGHT_EVENTS)}loadEvents()}catch(err){state.textContent='建立失敗：'+err.message;state.className='form-state bad'}});
 let ACTIVE_EVENT=null,EVENT_PLAYERS=[];
@@ -117,26 +122,33 @@ function renderWorkspace(){
 }
 async function addWorkspacePlayer(){
  const key=document.querySelector('#workspaceMemberSelect').value;if(!key)return;
- const btn=document.querySelector('#workspaceAddPlayer'),m=MEMBER_ROWS.find(x=>x.memberKey===key),group=document.querySelector('#workspaceGroup').value.trim()||m?.group||'';btn.disabled=true;
+ const btn=document.querySelector('#workspaceAddPlayer'),m=MEMBER_ROWS.find(x=>x.memberKey===key),group=document.querySelector('#workspaceGroup').value.trim()||m?.group||'';
+ if(!m||WORKSPACE_PLAYERS.some(x=>x.memberKey===key))return;
+ const optimistic={memberKey:key,memberId:m.memberId,name:m.name,buyin:1,rebuy:0,group,chips:0};
+ WORKSPACE_PLAYERS.push(optimistic);renderWorkspace();filterWorkspaceMembers('');try{localStorage.setItem('eightEventPlayers:'+ACTIVE_EVENT,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}
+ document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';btn.disabled=true;
  try{
-   if(m&&!WORKSPACE_PLAYERS.some(x=>x.memberKey===key)){WORKSPACE_PLAYERS.push({memberKey:key,memberId:m.memberId,name:m.name,buyin:1,rebuy:0,group,chips:0});renderWorkspace()}
    await api('eight.eventPlayers.add',{eventId:ACTIVE_EVENT,memberKey:key});
-   if(group)await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch:{group}});
-   document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';await loadWorkspacePlayers();filterWorkspaceMembers('');loadEvents();
+   if(group)api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch:{group}}).catch(console.error);
+   btn.disabled=false;
+   loadWorkspacePlayers();loadEvents();
  }catch(err){
-   await loadWorkspacePlayers();
-   const committed=WORKSPACE_PLAYERS.some(x=>x.memberKey===key);
-   if(committed){
-     document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';filterWorkspaceMembers('');loadEvents();
-   }else alert('加入失敗：'+err.message)
- }finally{btn.disabled=false}
+   btn.disabled=false;
+   const eventId=ACTIVE_EVENT;
+   api('eight.eventPlayers.list',{eventId}).then(r=>{
+     if(ACTIVE_EVENT!==eventId)return;
+     const rows=r.players||[],committed=rows.some(x=>x.memberKey===key);
+     WORKSPACE_PLAYERS=rows;renderWorkspace();filterWorkspaceMembers('');
+     try{localStorage.setItem('eightEventPlayers:'+eventId,JSON.stringify(rows))}catch(_){}
+     if(!committed)alert('加入失敗：'+err.message)
+   }).catch(()=>alert('加入狀態尚未確認，請稍後按重新整理'));
+ }
 }
 document.querySelector('#eventList').addEventListener('click',e=>{const b=e.target.closest('.enter-event');if(b){openEventWorkspace(b.dataset.id)}});
 function returnToEventList(){
  const eventId=ACTIVE_EVENT,keys=[...WS_PENDING_PATCH.keys()];
  goPage('events');ACTIVE_EVENT=null;WORKSPACE_EVENT=null;
- setTimeout(()=>loadEvents(),0);
- if(eventId&&keys.length)Promise.allSettled(keys.map(key=>flushWorkspacePlayerForEvent(eventId,key))).then(()=>loadEvents())
+ if(eventId&&keys.length)Promise.allSettled(keys.map(key=>flushWorkspacePlayerForEvent(eventId,key))).catch(console.error)
 }
 document.querySelector('#backToEvents').onclick=returnToEventList;
 document.querySelector('#workspaceRefresh').addEventListener('click',loadWorkspacePlayers);
