@@ -145,7 +145,7 @@ function eightUpdateEventPlayer_(eventId,key,p){
     return {eventId,memberKey:key,buyin,rebuy,entries:buyin+rebuy}
   }finally{lock.releaseLock()}
 }
-function eightDeleteEventPlayer_(eventId,key){const lock=LockService.getScriptLock();lock.waitLock(10000);try{const f=eightFindPlayerRow_(eventId,key);f.sh.getRange(f.row,9).setValue('deleted');f.sh.getRange(f.row,11).setValue(new Date());return {deleted:true}}finally{lock.releaseLock()}}
+function eightDeleteEventPlayer_(eventId,key){const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');try{const f=eightFindPlayerRow_(eventId,key);f.sh.deleteRow(f.row);SpreadsheetApp.flush();return {deleted:true}}finally{lock.releaseLock()}}
 function eightBootstrap_(){
   const members=eightListMembers_(),settings=eightSettings_(),now=new Date(),monthNew=members.filter(m=>{const d=new Date(m.timestamp);return !isNaN(d)&&d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()}).length;
   return {ok:true,settings,members,summary:{memberCount:members.length,monthNewMembers:monthNew}}
