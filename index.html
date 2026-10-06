@@ -2068,7 +2068,23 @@ onAuthStateChanged(auth,u=>{if(u&&String(u.email||"").toLowerCase()==="ga88149@g
  },true);
 })();
 </script>
-</head>
+<style id="eight-layout-v1">
+:root{--eight-side:220px}
+body{padding-left:var(--eight-side)}
+header{position:fixed;left:0;top:0;width:var(--eight-side);height:86px;z-index:1000;display:flex;align-items:center;padding:18px 16px;box-sizing:border-box;border-right:1px solid #2b3440}
+header .brand{font-size:18px;line-height:1.25}
+header .brand-version{display:block;margin-top:5px;font-size:11px}
+#nav{position:fixed!important;left:0;top:86px;bottom:0;width:var(--eight-side);z-index:999;display:flex!important;flex-direction:column;align-items:stretch;gap:7px;padding:12px!important;box-sizing:border-box;overflow-y:auto;border-right:1px solid #2b3440;border-top:1px solid #2b3440}
+#nav button{width:100%;min-height:42px;text-align:left;justify-content:flex-start;padding:10px 14px}
+#nav #epcThemeToggle{margin-top:auto}
+main{margin-left:0!important;width:auto!important;max-width:none!important;padding:24px 28px!important}
+#actionMsg{top:12px!important}
+@media(max-width:900px){
+ :root{--eight-side:170px}
+ header,#nav{width:var(--eight-side)}
+ main{padding:18px!important}
+}
+</style></head>
 <script>
 (function(){
  try{
@@ -2077,14 +2093,14 @@ onAuthStateChanged(auth,u=>{if(u&&String(u.email||"").toLowerCase()==="ga88149@g
  }catch(_){document.documentElement.setAttribute('data-epc-theme','dark')}
 })();
 </script><body><script>window.EPC_RECOVERY_READONLY=true;</script>
-<header><div><div class="brand"><b>EPC</b> Poker Management <span class="brand-version">V2.0 · Verified Stable Baseline</span></div></div><div style="display:flex;align-items:center;gap:10px"><div class="small" id="saveState">☁ 連線準備中…</div><div class="small" id="firebaseMirrorState">Firebase：載入中</div><button class="secondary" style="padding:7px 10px" onclick="epcFirebaseLogin()">Firebase 登入</button><button class="secondary" style="padding:7px 10px" onclick="epcFirebaseVerify()">檢查 Firebase</button><button class="secondary" style="padding:7px 10px" onclick="epcShowRecoveryAudit_()">唯讀盤點</button><button class="secondary" style="padding:7px 10px" onclick="loadVerifiedRecovery_()">載入 10/3 驗證資料</button><button class="secondary" style="padding:7px 10px" onclick="manualCloudSync()">立即儲存雲端</button><button class="secondary" style="padding:7px 10px" onclick="manualCloudLoad()">從雲端載入</button></div></header>
+<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V1</span></div></header>
 <nav id="nav">
 <button data-page="dashboard" class="active">總覽</button>
 <button data-page="members">會員</button>
 <button data-page="events">賽事管理</button>
 
 <button data-page="dailysettle">分帳報表</button>
-<button data-page="accounting">EPC帳務</button>
+<button data-page="accounting">Eight帳務</button>
 <button data-page="activities">活動管理</button>
 <button data-page="displays">顯示設備</button>
 
