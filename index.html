@@ -76,6 +76,15 @@
   </form>
  </div>
 </div>
+<div id="eventPlayersModal" class="modal" hidden>
+ <div class="modal-backdrop" data-close-players></div>
+ <div class="modal-card card event-players-card">
+  <div class="card-title"><div><h2 id="eventPlayersTitle">賽事玩家</h2><span id="eventPlayersMeta"></span></div><button type="button" data-close-players>✕</button></div>
+  <div class="player-keyin"><input id="eventMemberSearch" placeholder="輸入姓名 / POKER FANS ID / 綽號"><div id="eventMemberMatches"></div></div>
+  <div class="card-title player-list-title"><h2>已加入玩家</h2><span id="eventPlayerCount">0 人</span></div>
+  <div id="eventPlayerList" class="empty">尚未加入玩家</div>
+ </div>
+</div>
 <div id="memberModal" class="modal" hidden>
  <div class="modal-backdrop" data-close-member></div>
  <div class="modal-card card">
