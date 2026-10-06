@@ -48,6 +48,23 @@
  <div class="grid3"><article class="card module"><b>賽事設定</b><p>名稱、時間、級別、標準/自訂收費、JP、優惠門檻、預設規則</p></article><article class="card module"><b>玩家 KEYIN</b><p>關鍵字加入、座位、買入/重買、優惠、支付、單場分帳群組</p></article><article class="card module"><b>籌碼清算 / ICM</b><p>差額歸零後計算，最低 100，可人工調整，A4 滿版列印</p></article></div>
  <article class="card"><div class="card-title"><h2>當日賽事</h2><span>依營業日歸屬</span></div><div id="eventList" class="empty">尚未載入賽事</div></article>
 </section>
+
+<section id="eventWorkspace" class="page">
+ <div class="event-workspace-head">
+  <div><button type="button" class="secondary" id="backToEvents">← 返回賽事列表</button><h2 id="workspaceTitle">賽事</h2><div class="muted" id="workspaceMeta"></div></div>
+  <div class="event-workspace-actions"><button type="button" id="workspaceRefresh">重新整理</button><button type="button" class="gold" id="workspaceSettle">ICM / 結算</button></div>
+ </div>
+ <div id="workspaceKpis" class="event-workspace-kpis"></div>
+ <article class="card">
+  <div class="card-title"><h2>加入玩家</h2><span>輸入會員 ID／姓名／綽號，Enter 直接加入</span></div>
+  <div class="event-addbar"><input id="workspaceMemberSearch" autocomplete="off" placeholder="輸入會員 ID、姓名或綽號"><select id="workspaceMemberSelect"></select><input id="workspaceGroup" placeholder="單場結帳群組（可空白）"><button type="button" class="gold" id="workspaceAddPlayer">加入玩家</button></div>
+ </article>
+ <article class="card event-player-card">
+  <div class="card-title"><h2>玩家 / 賽事帳務</h2><span id="workspacePlayerCount">0 人</span></div>
+  <div class="event-table-wrap"><table class="event-player-table"><thead><tr><th>玩家</th><th>ID</th><th>買入</th><th>重買</th><th>總組數</th><th>早鳥</th><th>晚鳥</th><th>重買優惠</th><th>組數優惠</th><th>其他優惠</th><th>實收</th><th>結帳群組</th><th>下桌籌碼</th><th></th></tr></thead><tbody id="workspacePlayerRows"></tbody><tfoot id="workspacePlayerTotals"></tfoot></table></div>
+  <div class="notice">標準模式：第 1 組行政費原價；第 2～10 組行政費半價；第 11 組起免行政費。買入與重買價格不同時，依賽事設定分別計算。</div>
+ </article>
+</section>
 <section id="settlement" class="page"><article class="card"><div class="card-title"><h2>分帳報表</h2><span>跨賽事統一帳表</span></div><div class="empty">群組篩選、未分帳、全組列印與盈虧色彩將在此顯示</div></article></section>
 <section id="accounting" class="page"><div class="grid2"><article class="card"><div class="card-title"><h2>每日總帳</h2><span>自動彙總</span></div><div class="empty">行政費、各類優惠、入會費、JP、額外收入/支出</div></article><article class="card"><div class="card-title"><h2>獨立場次帳務</h2><span>不併入總帳</span></div><div class="empty">獨立收支與 JP</div></article></div></section>
 <section id="activities" class="page"><div class="activity-grid">
