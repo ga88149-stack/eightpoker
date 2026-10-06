@@ -31,7 +31,7 @@ async function boot(){
    const r=await api('eight.bootstrap');
    if(r.settings){CONFIG.businessStart=r.settings.businessStart||CONFIG.businessStart;CONFIG.businessEnd=r.settings.businessEnd||CONFIG.businessEnd;document.querySelector('#businessStart').value=CONFIG.businessStart;document.querySelector('#businessEnd').value=CONFIG.businessEnd}
    MEMBER_ROWS=r.members||[];try{localStorage.setItem('eightMemberCache',JSON.stringify(MEMBER_ROWS))}catch(_){}
-   renderMembers();document.querySelector('#kMembers').textContent=money(r.summary?.memberCount);document.querySelector('#kNewMembers').textContent=money(r.summary?.monthNewMembers);refreshBusinessDay();setSync('資料庫：已連線')
+   renderMembers();document.querySelector('#kMembers').textContent=money(r.summary?.memberCount);document.querySelector('#kNewMembers').textContent=money(r.summary?.monthNewMembers);refreshBusinessDay();setSync('資料庫：已連線');loadEvents()
  }catch(e){
    console.error(e);let cached=[];try{cached=JSON.parse(localStorage.getItem('eightMemberCache')||'[]')}catch(_){}
    if(cached.length){MEMBER_ROWS=cached;renderMembers();document.querySelector('#kMembers').textContent=money(cached.length);setSync('資料庫：暫時無法連線（顯示上次資料）',true)}
@@ -62,11 +62,12 @@ document.querySelector('#eventTodayBtn').addEventListener('click',()=>document.q
 document.querySelector('#createEventBtn').addEventListener('click',openEventModal);
 document.querySelectorAll('[data-close-event]').forEach(x=>x.addEventListener('click',closeEventModal));
 document.querySelector('#eventLevel').addEventListener('change',e=>{const p=EVENT_PRESETS[e.target.value];if(p){document.querySelector('#eventBuyinTotal').value=p[0];document.querySelector('#eventBuyinAdmin').value=p[1];document.querySelector('#eventRebuyTotal').value=p[2];document.querySelector('#eventRebuyAdmin').value=p[3]}const n=document.querySelector('#eventName'),count=(window.EIGHT_EVENTS||[]).length+1;if(/^EPC#\d+\s/.test(n.value)||!n.value.trim())n.value='EPC#'+count+' '+(e.target.value==='custom'?'自訂':e.target.value)+' 限時錦標賽'});
-function renderEvents(rows=[]){window.EIGHT_EVENTS=rows;const el=document.querySelector('#eventList');if(!rows.length){el.className='empty';el.innerHTML='目前營業日尚無賽事';return}el.className='event-list';const stat=(k,v,moneyFmt=false)=>'<div class="event-stat"><small>'+k+'</small><b>'+(moneyFmt?money(v):esc(v??0))+'</b></div>';el.innerHTML=rows.map(x=>{const z=x.summary||{};return '<div class="event-row event-row-rich"><div class="event-main"><div><b>'+esc(x.name||'未命名賽事')+'</b><small>'+esc(x.businessDate||'')+' · '+esc(x.startTime||'')+' · '+esc(x.level||'自訂')+'</small></div><div class="event-actions"><button class="secondary enter-event" data-id="'+esc(x.eventId)+'">進入</button><button class="danger delete-event" data-id="'+esc(x.eventId)+'">刪除</button></div></div><div class="event-stats">'+stat('參賽人數',z.participants||0)+stat('重買人數',z.rebuyPeople||0)+stat('總組數',z.totalEntries||0)+stat('總買入',z.totalGross||0,true)+stat('早鳥',z.earlyDiscount||0,true)+stat('晚鳥',z.lateDiscount||0,true)+stat('重買優惠',z.rebuyDiscount||0,true)+stat('組數優惠',z.entryDiscount||0,true)+stat('其他優惠',z.otherDiscount||0,true)+stat('總獎金',z.prizePool||0,true)+stat('實收行政費',z.adminNet||0,true)+stat('JP',z.jp||0,true)+'</div></div>'}).join('')}
+function renderEvents(rows=[]){window.EIGHT_EVENTS=rows;const el=document.querySelector('#eventList');if(!rows.length){el.className='empty';el.innerHTML='目前營業日尚無賽事';return}el.className='event-list';const stat=(k,v,moneyFmt=false)=>'<div class="event-stat"><small>'+k+'</small><b>'+(moneyFmt?money(v):esc(v??0))+'</b></div>';el.innerHTML=rows.map(x=>{const z=x.summary||{};return '<div class="event-row event-row-rich" data-event-id="'+esc(x.eventId)+'"><div class="event-main"><div><b>'+esc(x.name||'未命名賽事')+'</b><small>'+esc(x.businessDate||'')+' · '+esc(x.startTime||'')+' · '+esc(x.level||'自訂')+'</small></div><div class="event-actions"><button class="secondary enter-event" data-id="'+esc(x.eventId)+'">進入</button><button class="danger delete-event" data-id="'+esc(x.eventId)+'">刪除</button></div></div><div class="event-stats">'+stat('參賽人數',z.participants||0)+stat('重買人數',z.rebuyPeople||0)+stat('總組數',z.totalEntries||0)+stat('總買入',z.totalGross||0,true)+stat('早鳥',z.earlyDiscount||0,true)+stat('晚鳥',z.lateDiscount||0,true)+stat('重買優惠',z.rebuyDiscount||0,true)+stat('組數優惠',z.entryDiscount||0,true)+stat('其他優惠',z.otherDiscount||0,true)+stat('總獎金',z.prizePool||0,true)+stat('實收行政費',z.adminNet||0,true)+stat('JP',z.jp||0,true)+'</div></div>'}).join('')}
+let EVENTS_CACHE_DATE='';
 async function loadEvents(){
  const date=document.querySelector('#eventDate').value||businessDate(),cacheKey='eightEvents:'+date;
- if(!(window.EIGHT_EVENTS||[]).length){try{const cached=JSON.parse(localStorage.getItem(cacheKey)||'[]');if(cached.length)renderEvents(cached)}catch(_){}}
- try{const r=await api('eight.events.list',{businessDate:date}),rows=r.events||[];renderEvents(rows);try{localStorage.setItem(cacheKey,JSON.stringify(rows))}catch(_){}}
+ if(EVENTS_CACHE_DATE!==date){EVENTS_CACHE_DATE=date;let cached=[];try{cached=JSON.parse(localStorage.getItem(cacheKey)||'[]')}catch(_){}renderEvents(cached)}
+ try{const r=await api('eight.events.list',{businessDate:date}),rows=r.events||[];if(EVENTS_CACHE_DATE!==date)return;renderEvents(rows);try{localStorage.setItem(cacheKey,JSON.stringify(rows))}catch(_){}}
  catch(err){if(err.message!=='UNKNOWN_ACTION')console.error(err)}
 }
 document.querySelector('#eventDate').addEventListener('change',loadEvents);
@@ -144,10 +145,16 @@ async function addWorkspacePlayer(){
    }).catch(()=>alert('加入狀態尚未確認，請稍後按重新整理'));
  }
 }
-document.querySelector('#eventList').addEventListener('click',e=>{const b=e.target.closest('.enter-event');if(b){openEventWorkspace(b.dataset.id)}});
+document.querySelector('#eventList').addEventListener('click',e=>{
+ const del=e.target.closest('.delete-event');if(del)return;
+ const enter=e.target.closest('.enter-event'),row=e.target.closest('.event-row[data-event-id]'),id=enter?.dataset.id||row?.dataset.eventId;
+ if(id)openEventWorkspace(id)
+});
 function returnToEventList(){
- const eventId=ACTIVE_EVENT,keys=[...WS_PENDING_PATCH.keys()];
- goPage('events');ACTIVE_EVENT=null;WORKSPACE_EVENT=null;
+ const eventId=ACTIVE_EVENT,keys=[...WS_PENDING_PATCH.keys()],events=document.querySelector('#events'),workspace=document.querySelector('#eventWorkspace');
+ document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));if(events)events.classList.add('active');if(workspace)workspace.classList.remove('active');
+ document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('active',x.dataset.page==='events'));const t=document.querySelector('#pageTitle');if(t)t.textContent=pages.events;
+ ACTIVE_EVENT=null;WORKSPACE_EVENT=null;
  if(eventId&&keys.length)Promise.allSettled(keys.map(key=>flushWorkspacePlayerForEvent(eventId,key))).catch(console.error)
 }
 document.querySelector('#backToEvents').onclick=returnToEventList;
