@@ -54,8 +54,8 @@ function eventCalcPlayer(p,e){
  const buyin=Math.max(0,Number(p.buyin??1)),rebuy=Math.max(0,Number(p.rebuy??0)),groups=buyin+rebuy;
  const gross=buyin*Number(e.buyinTotal||0)+rebuy*Number(e.rebuyTotal||0);
  const early=Number(p.earlyDiscount||0),late=Number(p.lateDiscount||0),other=Number(p.otherDiscount||0);
- const rd=Math.max(0,Math.min(groups-1,9))*Number(e.rebuyAdmin||0)/2;
- const overbuy=Math.max(0,groups-10)*Number(e.rebuyAdmin||0);
+ const rd=Math.max(0,rebuy)*Number(e.rebuyAdmin||0)/2;
+ const overbuy=Math.max(0,groups-10)*Number(e.rebuyAdmin||0)/2;
  const discount=early+late+rd+overbuy+other;
  return {buyin,rebuy,groups,gross,early,late,rd,overbuy,other,discount,paid:Math.max(0,gross-discount)};
 }
