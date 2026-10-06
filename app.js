@@ -114,7 +114,17 @@ document.querySelector('#workspaceRefresh').addEventListener('click',loadWorkspa
 document.querySelector('#workspaceMemberSearch').addEventListener('input',e=>filterWorkspaceMembers(e.target.value));
 document.querySelector('#workspaceMemberSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addWorkspacePlayer()}});
 document.querySelector('#workspaceAddPlayer').addEventListener('click',addWorkspacePlayer);
-document.querySelector('#workspacePlayerRows').addEventListener('change',async e=>{
+async function flushWorkspacePlayer(key){
+ const patch=WS_PENDING_PATCH.get(key);if(!patch||!ACTIVE_EVENT)return;WS_PENDING_PATCH.delete(key);WS_SAVE_TIMERS.delete(key);
+ try{await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch:patch})}
+ catch(err){alert('更新失敗：'+err.message);await loadWorkspacePlayers()}
+}
+function queueWorkspacePlayerSave(key,patch){
+ WS_PENDING_PATCH.set(key,Object.assign({},WS_PENDING_PATCH.get(key)||{},patch));
+ if(WS_SAVE_TIMERS.has(key))clearTimeout(WS_SAVE_TIMERS.get(key));
+ WS_SAVE_TIMERS.set(key,setTimeout(()=>flushWorkspacePlayer(key),250));
+}
+document.querySelector('#workspacePlayerRows').addEventListener('change',e=>{
  const tr=e.target.closest('tr[data-key]');if(!tr)return;const key=tr.dataset.key,p=WORKSPACE_PLAYERS.find(x=>x.memberKey===key);if(!p)return;let patch={};
  if(e.target.classList.contains('ws-buyin')){p.buyin=Math.max(0,Number(e.target.value||0));patch.buyin=p.buyin;patch.entries=p.buyin+Number(p.rebuy||0)}
  else if(e.target.classList.contains('ws-rebuy')){p.rebuy=Math.max(0,Number(e.target.value||0));patch.rebuy=p.rebuy;patch.entries=Number(p.buyin??1)+p.rebuy}
@@ -123,9 +133,9 @@ document.querySelector('#workspacePlayerRows').addEventListener('change',async e
  else if(e.target.classList.contains('ws-other')){p.otherDiscount=Number(e.target.value||0);patch.otherDiscount=p.otherDiscount}
  else if(e.target.classList.contains('ws-group')){p.group=e.target.value.trim();patch.group=p.group}
  else if(e.target.classList.contains('ws-chips')){p.chips=Number(e.target.value||0);patch.chips=p.chips}else return;
- renderWorkspace();try{await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch})}catch(err){alert('更新失敗：'+err.message);loadWorkspacePlayers()}
+ renderWorkspace();queueWorkspacePlayerSave(key,patch)
 });
-document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key}).then(()=>{loadEvents()}).catch(err=>{WORKSPACE_PLAYERS=old;renderWorkspace();alert('移除失敗：'+err.message)})});
+document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];if(WS_SAVE_TIMERS.has(key))clearTimeout(WS_SAVE_TIMERS.get(key));WS_SAVE_TIMERS.delete(key);WS_PENDING_PATCH.delete(key);WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key}).then(()=>{loadEvents()}).catch(err=>{WORKSPACE_PLAYERS=old;renderWorkspace();alert('移除失敗：'+err.message)})});
 document.querySelector('#workspaceSettle').addEventListener('click',()=>alert('下一階段接回 EPCMANAGEMENT 的 ICM / 結算頁；目前先完成賽事操作頁。'));
 
 document.querySelector('#eventMemberSearch').addEventListener('input',e=>{const q=memberSearchText(e.target.value);const box=document.querySelector('#eventMemberMatches');if(!q){box.innerHTML='';return}const joined=new Set(EVENT_PLAYERS.map(x=>x.memberKey));const list=MEMBER_ROWS.filter(m=>!joined.has(m.memberKey)&&[m.memberId,m.name,m.nickname].some(v=>memberSearchText(v).includes(q))).slice(0,8);box.innerHTML=list.map(m=>'<button type="button" class="member-match" data-key="'+esc(m.memberKey)+'"><span><b>'+esc(m.name)+'</b><small>'+esc(m.memberId)+(m.nickname?' · '+esc(m.nickname):'')+'</small></span><strong>＋ 加入</strong></button>').join('')});
