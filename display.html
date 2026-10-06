@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>EPC Activity Display</title>
+<style>
+:root{--bg:#070d14;--panel:#0d1722;--line:#24384b;--text:#f4f7fb;--muted:#83a2bd;--gold:#e7bd55;--gold2:#f6d779;--danger:#ff6b6b;--ok:#4bd59b}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;background:radial-gradient(circle at 50% 35%,#132333 0,#09121c 36%,#050a10 78%);color:var(--text);font-family:Arial,"Noto Sans TC",sans-serif}
+body{overflow:hidden}
+.wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px}
+.card{text-align:center;width:min(1100px,94vw)}
+h1{font-size:clamp(38px,4vw,68px);margin:0 0 16px;letter-spacing:.5px}
+.sub{font-size:clamp(16px,1.5vw,25px);color:var(--muted);margin-bottom:36px}
+.code{display:flex;justify-content:center;gap:16px;flex-wrap:nowrap}
+.digit{width:clamp(72px,7.5vw,120px);height:clamp(96px,9vw,142px);display:flex;align-items:center;justify-content:center;border-radius:16px;background:linear-gradient(145deg,var(--gold2),var(--gold));color:#07111b;font-size:clamp(52px,6vw,88px);font-weight:900;box-shadow:0 0 28px rgba(231,189,85,.22),inset 0 1px 0 rgba(255,255,255,.65);border:1px solid #ffe394}
+.status{margin-top:28px;font-size:clamp(15px,1.3vw,21px);color:var(--muted)}
+.status.ok{color:var(--ok)} .status.err{color:var(--danger)}
+.debug{margin:18px auto 0;max-width:900px;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:rgba(13,23,34,.86);font:14px/1.45 monospace;color:#b8cad9;display:none;word-break:break-all}
+.screen{display:none;min-height:100vh;padding:28px}
+.screen.active{display:block}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:16px}
+.brand{font-size:30px;font-weight:900}.device{color:var(--muted)}
+.content{height:calc(100vh - 95px);display:flex;align-items:center;justify-content:center;text-align:center}
+.empty h2{font-size:48px;margin:0 0 12px}.empty p{font-size:22px;color:var(--muted)}
+.payload{width:100%;height:100%;overflow:auto}
+.payload pre{white-space:pre-wrap;text-align:left;background:var(--panel);border:1px solid var(--line);padding:24px;border-radius:16px;font-size:18px}
+</style>
+<style id="epcPlayerUiV2">
+.board{width:min(1180px,92vw);margin:2vh auto}.board-title{font-size:clamp(42px,4.5vw,76px);font-weight:900;margin-bottom:2vh}.rank-list{display:grid;gap:10px}.rank-row{display:grid;grid-template-columns:110px 1fr 180px;align-items:center;min-height:66px;padding:10px 22px;border:1px solid var(--line);border-radius:14px;background:rgba(13,23,34,.92);text-align:left}.rank-row.top3{border-color:rgba(231,189,85,.65);background:linear-gradient(90deg,rgba(231,189,85,.13),rgba(13,23,34,.95))}.rank-no{font-size:clamp(24px,2.2vw,38px);font-weight:900;color:var(--gold)}.rank-name{font-size:clamp(24px,2.4vw,40px);font-weight:800}.rank-score{text-align:right;font-size:clamp(26px,2.5vw,42px);font-weight:900;color:var(--gold2)}.rank-score small{font-size:.5em;color:var(--muted);margin-left:6px}.board.compact .rank-row{min-height:48px;padding:6px 18px}.board.hero .rank-row:nth-child(n+4){display:none}.board.font-large .rank-name,.board.font-large .rank-score{font-size:3vw}.board.font-xlarge .rank-name,.board.font-xlarge .rank-score{font-size:3.7vw}.epc-mark{position:fixed;left:24px;top:18px;font-weight:900;color:var(--gold);letter-spacing:2px}
+.epcBrandLogoV3{height:92px;max-width:250px;object-fit:contain;border-radius:10px;filter:drop-shadow(0 0 12px rgba(255,177,35,.3))}.top{min-height:112px}.brand{display:flex;align-items:center;gap:14px}.epc-mark{display:none!important}</style><style id="epcRankPosterV1">
+/* EPC weekly leaderboard — responsive 16:9 TV stage */
+.payload:has(.rank-poster){overflow:hidden!important}
+.content:has(.rank-poster){display:block!important}
+.rank-poster{--s:min(1vw,1.78vh);position:relative;width:100%;height:100%;min-height:0;margin:0;overflow:hidden;padding:calc(var(--s)*1.7) calc(var(--s)*2.4) calc(var(--s)*1.3);border:1px solid rgba(255,177,44,.62);border-radius:calc(var(--s)*1.25);background:
+radial-gradient(circle at 50% 8%,rgba(255,157,0,.30),transparent 25%),
+radial-gradient(circle at 14% 52%,rgba(176,18,0,.22),transparent 30%),
+radial-gradient(circle at 87% 60%,rgba(255,94,0,.18),transparent 30%),
+linear-gradient(135deg,#120703 0%,#030508 48%,#120502 100%);box-shadow:inset 0 0 calc(var(--s)*7) rgba(255,91,0,.11);isolation:isolate}
+.rank-poster:before{content:"♠";position:absolute;left:calc(var(--s)*-2);bottom:calc(var(--s)*-5);font-size:calc(var(--s)*24);line-height:1;color:rgba(225,151,39,.10);transform:rotate(-16deg);z-index:-1}
+.rank-poster:after{content:"♠";position:absolute;right:calc(var(--s)*-2);top:calc(var(--s)*7);font-size:calc(var(--s)*19);line-height:1;color:rgba(255,178,48,.08);transform:rotate(18deg);z-index:-1}
+.rp-topline{height:18%;display:grid;grid-template-columns:26% 48% 26%;align-items:center;position:relative;z-index:2}
+.rp-brand{text-align:left;align-self:start;padding-top:calc(var(--s)*.5)}.rp-brand-main{font-size:calc(var(--s)*2.1);font-weight:1000;color:#fff;letter-spacing:.08em;text-shadow:0 0 calc(var(--s)*1.2) #ff7800}.rp-brand-sub{font-size:calc(var(--s)*.72);letter-spacing:.28em;color:#e9b34f;margin-top:calc(var(--s)*.25)}
+.rp-head{text-align:center}.rp-kicker{font-size:calc(var(--s)*.85);font-weight:900;letter-spacing:.32em;color:#ffc24f}.rp-title{font-size:calc(var(--s)*4.8);line-height:1;font-weight:1000;color:#fff3d2;text-shadow:0 calc(var(--s)*.16) 0 #7e2a00,0 0 calc(var(--s)*1.2) #ff7200}.rp-sub{font-size:calc(var(--s)*1.05);font-weight:800;color:#ffd875;margin-top:calc(var(--s)*.35);letter-spacing:.08em}
+.rp-period{justify-self:end;align-self:start;min-width:calc(var(--s)*13);padding:calc(var(--s)*.75) calc(var(--s)*1.2);text-align:left;border:1px solid #e7a72c;background:linear-gradient(135deg,rgba(56,28,7,.96),rgba(8,8,9,.96));clip-path:polygon(8% 0,100% 0,92% 100%,0 100%);box-shadow:0 0 calc(var(--s)*1.4) rgba(255,154,0,.22)}.rp-period b{display:block;font-size:calc(var(--s)*.78);color:#f4c25a}.rp-period span{font-size:calc(var(--s)*1.15);font-weight:900;color:#fff}
+.rp-podium{height:37%;display:grid;grid-template-columns:1fr 1.22fr 1fr;gap:calc(var(--s)*1.15);align-items:end;max-width:calc(var(--s)*86);margin:0 auto;position:relative;z-index:2}.rp-winner{height:75%;display:flex;flex-direction:column;justify-content:center;align-items:center;border:1px solid #d68c24;border-radius:calc(var(--s)*1.1);padding:calc(var(--s)*1);background:linear-gradient(180deg,rgba(55,30,14,.94),rgba(8,10,13,.97));box-shadow:0 0 calc(var(--s)*1.5) rgba(255,126,0,.17),inset 0 0 calc(var(--s)*2) rgba(255,166,38,.06)}.rp-winner.first{height:94%;border:2px solid #ffc837;background:linear-gradient(180deg,rgba(105,38,3,.96),rgba(19,8,4,.98));box-shadow:0 0 calc(var(--s)*2.4) rgba(255,145,0,.42),inset 0 0 calc(var(--s)*2.4) rgba(255,126,0,.12)}.rp-medal{font-size:calc(var(--s)*3.1);line-height:1}.rp-name{font-size:calc(var(--s)*2.05);font-weight:1000;margin:calc(var(--s)*.35) 0;color:#fff}.rp-points{font-size:calc(var(--s)*2.55);font-weight:1000;color:#ffd34e;text-shadow:0 0 calc(var(--s)*.8) rgba(255,164,0,.28)}.rp-points small{font-size:.42em;margin-left:calc(var(--s)*.25)}
+.rp-rest-wrap{height:39%;max-width:calc(var(--s)*91);margin:calc(var(--s)*.7) auto 0;position:relative;z-index:2}.rp-rest-head{display:grid;grid-template-columns:calc(var(--s)*6) 1fr calc(var(--s)*9);padding:0 calc(var(--s)*1.2) calc(var(--s)*.45);font-size:calc(var(--s)*.72);color:#d4a84e;text-align:left}.rp-rest-head span:last-child{text-align:right}.rp-rest{display:grid;grid-template-columns:1fr 1fr;gap:calc(var(--s)*.55) calc(var(--s)*1);margin:auto}.rp-row{height:calc(var(--s)*3.25);display:grid;grid-template-columns:calc(var(--s)*5) 1fr calc(var(--s)*8);align-items:center;padding:0 calc(var(--s)*1);border:1px solid rgba(255,154,27,.5);border-radius:calc(var(--s)*.65);background:linear-gradient(90deg,rgba(56,13,7,.9),rgba(8,12,17,.96));text-align:left}.rp-no{font-size:calc(var(--s)*1.25);font-weight:1000;color:#ffb32c}.rp-row .rp-name{font-size:calc(var(--s)*1.25);margin:0}.rp-row .rp-points{font-size:calc(var(--s)*1.3);text-align:right}.rp-foot{position:absolute;bottom:calc(var(--s)*.65);left:0;right:0;text-align:center;color:#d7aa50;font-size:calc(var(--s)*.62);letter-spacing:.35em}
+@media(max-aspect-ratio:4/3){.rp-podium{grid-template-columns:1fr 1.15fr 1fr}.rp-rest{grid-template-columns:1fr}.rp-rest-wrap{height:auto}.rp-row{height:calc(var(--s)*2.7)}}
+</style><style id="epcTvFullscreenV2">
+#displayScreen.active{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;min-height:100vh!important;padding:0!important;margin:0!important;background:#050505!important;overflow:hidden!important}
+#displayScreen.active>.top{display:none!important}
+#displayScreen.active>.content{position:absolute!important;inset:0!important;width:100vw!important;height:100vh!important;min-height:0!important;padding:0!important;margin:0!important}
+#displayScreen.active .payload{width:100vw!important;height:100vh!important;overflow:hidden!important}
+#displayScreen.active .rank-poster{width:100vw!important;height:100vh!important;border-radius:0!important;border:0!important}
+</style><style id="epcRankColumnsV2">.rp-rest-col{display:grid;gap:calc(var(--s)*.55);align-content:start}@media(max-aspect-ratio:4/3){.rp-rest{grid-template-columns:1fr 1fr!important}.rp-rest-col{gap:calc(var(--s)*.45)}}</style><style id="epcActivityScreensV1">
+.activity-screen{--s:min(1vw,1.78vh);width:100vw;height:100vh;overflow:hidden;padding:calc(var(--s)*2.2) calc(var(--s)*3);background:radial-gradient(circle at 50% 0,rgba(255,145,0,.18),transparent 28%),linear-gradient(135deg,#170704,#040507 52%,#150406);position:relative;color:#fff}
+.activity-screen:before,.activity-screen:after{content:"♠";position:absolute;font-size:calc(var(--s)*22);color:rgba(255,176,45,.07);line-height:1}.activity-screen:before{left:calc(var(--s)*-3);bottom:calc(var(--s)*-5);transform:rotate(-15deg)}.activity-screen:after{right:calc(var(--s)*-2);top:calc(var(--s)*6);transform:rotate(18deg)}
+.as-head{height:18%;display:grid;grid-template-columns:24% 52% 24%;align-items:start;position:relative;z-index:2}.as-brand{text-align:left}.as-brand b{font-size:calc(var(--s)*2.05);text-shadow:0 0 calc(var(--s)*1) #ff7100}.as-brand small{display:block;color:#eab54f;letter-spacing:.22em;font-size:calc(var(--s)*.66);margin-top:calc(var(--s)*.3)}.as-title{text-align:center}.as-title .en{color:#f0b443;letter-spacing:.28em;font-weight:900;font-size:calc(var(--s)*.72)}.as-title h1{font-size:calc(var(--s)*4.25);line-height:1;margin:calc(var(--s)*.15) 0;color:#fff0cd;text-shadow:0 0 calc(var(--s)*1.2) #ff6900}.as-title p{margin:0;color:#ffd36b;font-weight:800;font-size:calc(var(--s)*1)}
+.as-main{height:74%;position:relative;z-index:2}.as-grid{height:100%;display:grid;grid-template-columns:1fr 1fr;gap:calc(var(--s)*1);align-content:start;max-width:calc(var(--s)*90);margin:auto}.as-row{height:calc(var(--s)*5.3);display:grid;grid-template-columns:calc(var(--s)*5) 1fr calc(var(--s)*12);align-items:center;padding:0 calc(var(--s)*1.2);border:1px solid rgba(255,163,27,.58);border-radius:calc(var(--s)*.8);background:linear-gradient(90deg,rgba(68,15,7,.9),rgba(9,12,17,.97));box-shadow:inset 0 0 calc(var(--s)*1.5) rgba(255,110,0,.04)}.as-no{font-size:calc(var(--s)*1.45);font-weight:1000;color:#ffb62e}.as-name{font-size:calc(var(--s)*1.55);font-weight:900;text-align:left}.as-value{font-size:calc(var(--s)*1.55);font-weight:1000;color:#ffd24b;text-align:right}.as-foot{position:absolute;bottom:calc(var(--s)*.8);left:0;right:0;text-align:center;color:#d5a847;letter-spacing:.32em;font-size:calc(var(--s)*.6)}
+.activity-screen.weekly{background:radial-gradient(circle at 35% 15%,rgba(0,125,255,.22),transparent 28%),linear-gradient(135deg,#041325,#03070d 55%,#071b31)}.activity-screen.weekly .as-row{border-color:rgba(31,151,255,.65);background:linear-gradient(90deg,rgba(4,52,101,.9),rgba(6,14,25,.97))}.activity-screen.weekly .as-no,.activity-screen.weekly .as-value,.activity-screen.weekly .as-title p{color:#6ed4ff}
+.activity-screen.pioneer{background:radial-gradient(circle at 50% 8%,rgba(255,62,0,.25),transparent 30%),linear-gradient(135deg,#1b0703,#050505 55%,#210a03)}
+.activity-screen.hunter{background:radial-gradient(circle at 70% 12%,rgba(201,0,255,.25),transparent 30%),linear-gradient(135deg,#12021e,#050308 55%,#21042d)}.activity-screen.hunter .as-row{border-color:rgba(218,42,255,.65);background:linear-gradient(90deg,rgba(61,6,79,.9),rgba(9,7,14,.97))}.activity-screen.hunter .as-no,.activity-screen.hunter .as-value,.activity-screen.hunter .as-title p{color:#ed66ff}
+.activity-screen.umbrella{background:radial-gradient(circle at 20% 10%,rgba(0,255,176,.18),transparent 28%),linear-gradient(135deg,#021d19,#030807 55%,#061b17)}.activity-screen.umbrella .as-row{border-color:rgba(37,222,173,.55);background:linear-gradient(90deg,rgba(3,65,53,.9),rgba(5,14,13,.97))}.activity-screen.umbrella .as-no,.activity-screen.umbrella .as-value,.activity-screen.umbrella .as-title p{color:#5ff0c7}
+.boss-screen{--s:min(1vw,1.78vh);width:100vw;height:100vh;overflow:hidden;padding:calc(var(--s)*2.4) calc(var(--s)*4);background:linear-gradient(rgba(0,0,0,.28),rgba(0,0,0,.48)),url('./boss-display-bg.png') center center/cover no-repeat;position:relative;color:#fff}.boss-head{text-align:center;height:25%}.boss-head .en{font-size:calc(var(--s)*.75);letter-spacing:.3em;color:#ffb53d;font-weight:900}.boss-head h1{font-size:calc(var(--s)*4.5);margin:calc(var(--s)*.2) 0;color:#fff0ce;text-shadow:0 0 calc(var(--s)*1.4) #f40}.boss-pool{text-align:center;font-size:calc(var(--s)*1.15);color:#ffd369}.boss-pool b{font-size:calc(var(--s)*3);margin:0 calc(var(--s)*.4);color:#ffcc3d}.boss-card{max-width:calc(var(--s)*76);margin:auto;padding:calc(var(--s)*2.4);border:2px solid #ff9f1a;border-radius:calc(var(--s)*1.4);background:linear-gradient(180deg,rgba(90,8,4,.93),rgba(9,5,5,.97));box-shadow:0 0 calc(var(--s)*3) rgba(255,50,0,.25);text-align:center}.boss-name{font-size:calc(var(--s)*2.8);font-weight:1000}.boss-hpbar{height:calc(var(--s)*3);margin:calc(var(--s)*1.5) 0;border:2px solid #ffb43c;border-radius:999px;background:#270506;overflow:hidden}.boss-hpfill{height:100%;background:linear-gradient(90deg,#d10d13,#ff5a00,#ffc338);box-shadow:0 0 calc(var(--s)*1.5) #f30}.boss-hptxt{font-size:calc(var(--s)*1.7);font-weight:900}.boss-latest{margin-top:calc(var(--s)*1.6);font-size:calc(var(--s)*1.2);color:#ffc85a}
+.boss-dashboard{display:grid;grid-template-columns:repeat(4,1fr);gap:calc(var(--s)*1);max-width:calc(var(--s)*88);margin:0 auto calc(var(--s)*1.25)}
+.boss-stat{min-height:calc(var(--s)*5.2);padding:calc(var(--s)*.9);border:1px solid rgba(255,184,60,.72);background:rgba(8,5,5,.82);border-radius:calc(var(--s)*.72);text-align:center;box-shadow:0 0 calc(var(--s)*1) rgba(255,45,0,.16);display:flex;flex-direction:column;justify-content:center}
+.boss-stat span{display:block;font-size:calc(var(--s)*.9);line-height:1.15;color:#ffd27b;font-weight:900}.boss-stat b{display:block;margin-top:calc(var(--s)*.3);font-size:calc(var(--s)*1.75);line-height:1.05;color:#fff}.boss-stat small{display:block!important;margin-top:calc(var(--s)*.32)!important;font-size:calc(var(--s)*.7)!important;line-height:1.25!important;color:#ffd27b!important;font-weight:800}
+.boss-stat.boss-pool-stat{grid-column:span 2;border-color:#ffd369;background:linear-gradient(180deg,rgba(104,45,4,.92),rgba(25,8,3,.92))}.boss-stat.boss-pool-stat b{font-size:calc(var(--s)*2.25);color:#ffd369}
+.boss-stat.boss-count-stat span{color:#d7e3ec}.boss-stat.boss-count-stat small{color:#9fb0bd!important;font-weight:700}
+.boss-status-on{color:#69f59a!important}.boss-status-off{color:#ff7777!important}
+.boss-main{display:grid;grid-template-columns:1.2fr .8fr;gap:calc(var(--s)*1);max-width:calc(var(--s)*88);margin:auto}
+.boss-card{max-width:none!important;margin:0!important}
+.boss-log{padding:calc(var(--s)*1.1);border:2px solid #ff9f1a;border-radius:calc(var(--s)*1.4);background:rgba(9,5,5,.88);overflow:hidden}
+.boss-log h2{margin:0 0 calc(var(--s)*.55);font-size:calc(var(--s)*1.25);color:#ffd369}.boss-log-row{display:grid;grid-template-columns:1.2fr 1.1fr .9fr .7fr;gap:calc(var(--s)*.35);padding:calc(var(--s)*.34) 0;border-bottom:1px solid rgba(255,184,60,.22);font-size:calc(var(--s)*.72)}.boss-log-row b{color:#ffcf68}
+</style><style id="epcRankLuxuryV3">
+.rank-poster{background:
+radial-gradient(ellipse at 50% -8%,rgba(255,180,35,.38),transparent 34%),
+radial-gradient(circle at 9% 55%,rgba(255,56,0,.20),transparent 27%),
+radial-gradient(circle at 92% 58%,rgba(180,0,0,.22),transparent 28%),
+linear-gradient(135deg,#160603 0%,#050303 43%,#0a0503 64%,#170603 100%)!important}
+.rp-casino-deco{position:absolute;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.rp-card{position:absolute;width:calc(var(--s)*7.2);height:calc(var(--s)*10);border:1px solid rgba(255,195,77,.6);border-radius:calc(var(--s)*.55);background:linear-gradient(145deg,#15100d,#050505);box-shadow:0 0 calc(var(--s)*1.4) rgba(255,130,0,.22);font-size:calc(var(--s)*3.2);font-weight:900;color:#e6b14a;padding:calc(var(--s)*.45)}
+.rp-card.c1{left:1.8%;top:23%;transform:rotate(-16deg)}.rp-card.c2{right:1.5%;top:25%;transform:rotate(16deg);color:#b81717}.rp-chipstack{position:absolute;bottom:2%;width:19%;height:17%;filter:drop-shadow(0 0 calc(var(--s)*1) rgba(255,134,0,.28))}
+.rp-chipstack.left{left:0}.rp-chipstack.right{right:0;transform:scaleX(-1)}
+.rp-chipstack i{position:absolute;display:block;width:calc(var(--s)*5.4);height:calc(var(--s)*1.15);border-radius:50%;border:2px solid #d59625;background:repeating-linear-gradient(90deg,#111 0 12%,#bd7614 12% 22%,#111 22% 34%);box-shadow:0 calc(var(--s)*.55) 0 #060606,0 0 calc(var(--s)*.8) rgba(255,172,42,.35)}
+.rp-chipstack i:nth-child(1){left:8%;bottom:8%}.rp-chipstack i:nth-child(2){left:30%;bottom:24%}.rp-chipstack i:nth-child(3){left:53%;bottom:5%}.rp-chipstack i:nth-child(4){left:67%;bottom:34%}
+.rp-topline{height:19%!important}.rp-brand-main{font-size:0!important;position:relative;width:calc(var(--s)*16);height:calc(var(--s)*6.5)}
+.rp-brand-main:before{content:"∞";position:absolute;left:0;top:calc(var(--s)*-1.5);font-family:Georgia,serif;font-style:italic;font-size:calc(var(--s)*6.2);line-height:1;color:#fff;transform:rotate(-8deg);text-shadow:calc(var(--s)*.22) calc(var(--s)*.12) 0 #d08a00,0 0 calc(var(--s)*.7) #ff9b00}
+.rp-brand-main:after{content:"POKER";position:absolute;left:calc(var(--s)*4.1);top:calc(var(--s)*2.3);font-size:calc(var(--s)*1.45);font-weight:1000;font-style:italic;letter-spacing:.04em;color:#fff;text-shadow:0 0 calc(var(--s)*.8) #ff8500}
+.rp-brand-sub{margin-top:calc(var(--s)*-1.15)!important;color:#fff!important;font-size:calc(var(--s)*.67)!important;letter-spacing:.14em!important}
+.rp-title:before{content:"♛";display:block;font-size:calc(var(--s)*2.4);line-height:.65;color:#ffd253;text-shadow:0 0 calc(var(--s)*.8) #ff7800}.rp-title{font-size:calc(var(--s)*4.65)!important}
+.rp-podium{height:36%!important;max-width:calc(var(--s)*76)!important;gap:calc(var(--s)*1.2)!important}
+.rp-winner{position:relative;overflow:visible!important;border-width:2px!important}.rp-winner:before{position:absolute;top:calc(var(--s)*-.95);left:50%;transform:translateX(-50%);padding:0 calc(var(--s)*.7);font-weight:1000;font-size:calc(var(--s)*.72);letter-spacing:.18em;background:#080808}
+.rp-winner:nth-child(1){border-color:#d8e0e9!important;background:linear-gradient(145deg,rgba(73,78,87,.92),rgba(9,10,12,.98))!important;box-shadow:0 0 calc(var(--s)*1.7) rgba(220,230,240,.18)!important}.rp-winner:nth-child(1):before{content:"SECOND";color:#e9eef5}
+.rp-winner.first{border-color:#ffd33e!important;background:linear-gradient(145deg,rgba(116,45,2,.97),rgba(20,8,2,.99))!important;box-shadow:0 0 calc(var(--s)*2.6) rgba(255,159,0,.46),inset 0 0 calc(var(--s)*2.3) rgba(255,109,0,.14)!important}.rp-winner.first:before{content:"CHAMPION";color:#ffd24b}
+.rp-winner:nth-child(3){border-color:#c56d2b!important;background:linear-gradient(145deg,rgba(78,35,18,.95),rgba(10,8,7,.99))!important;box-shadow:0 0 calc(var(--s)*1.7) rgba(210,93,30,.2)!important}.rp-winner:nth-child(3):before{content:"THIRD";color:#e28d4b}
+.rp-medal{font-size:calc(var(--s)*3.5)!important;filter:drop-shadow(0 0 calc(var(--s)*.55) rgba(255,187,42,.4))}
+.rp-rest-wrap{height:38%!important;max-width:calc(var(--s)*82)!important;background:rgba(0,0,0,.22);border:1px solid rgba(219,149,33,.3);border-radius:calc(var(--s)*.8);padding:calc(var(--s)*.65) calc(var(--s)*.8)}
+.rp-row{background:linear-gradient(90deg,rgba(15,10,8,.97),rgba(32,12,8,.92),rgba(8,10,13,.98))!important;border-color:rgba(219,149,33,.48)!important}
+.rp-row:hover{background:linear-gradient(90deg,rgba(69,27,5,.97),rgba(16,10,8,.98))!important}
+.rp-foot{z-index:3!important;color:#efbd57!important}
+</style></head>
+<body>
+<div id="pairScreen" class="wrap">
+  <main class="card">
+    <h1>EPC DISPLAY</h1>
+    <div class="sub">請到管理後台 → 顯示設備輸入配對碼</div>
+    <div id="code" class="code"></div>
+    <div id="status" class="status">正在連接 Display API…</div>
+    <div id="debug" class="debug"></div>
+  </main>
+</div>
+
+<div id="displayScreen" class="screen">
+  <div class="top"><div class="brand"><img class="epcBrandLogoV3" src="data:image/jpeg;base64,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" alt="EPC"><span></span></div><div id="deviceName" class="device">已配對</div></div>
+  <div class="content"><div id="payload" class="payload"><div class="empty"><h2>顯示器已連線</h2><p>等待管理後台發佈顯示內容</p></div></div></div>
+</div>
+
+<script>
+const DISPLAY_API = "https://script.google.com/macros/s/AKfycbzbsVQYff41MS7Y9ejk1gn5bZ_xLPXtVxIbg0IuCYyvQTnMbFYwxblMrQwpHq7WV71nsg/exec";
+const DEVICE_KEY = "epcDisplayDeviceIdV2";
+const POLL_MS = 3000;
+
+const $ = id => document.getElementById(id);
+function makeId(){
+  if (crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "epc-"+Date.now()+"-"+Math.random().toString(36).slice(2);
+}
+function deviceId(){
+  let id=localStorage.getItem(DEVICE_KEY);
+  if(!id){id=makeId();localStorage.setItem(DEVICE_KEY,id)}
+  return id;
+}
+function showCode(code){
+  const s=String(code||"").replace(/\D/g,"").padEnd(6,"-").slice(0,6);
+  $("code").innerHTML=[...s].map(x=>`<div class="digit">${x}</div>`).join("");
+}
+function status(msg,type=""){
+  $("status").textContent=msg;
+  $("status").className="status "+type;
+}
+function fail(msg,detail){
+  status(msg,"err");
+  $("debug").style.display="block";
+  $("debug").textContent=detail||msg;
+}
+async function post(body){
+  const r=await fetch(DISPLAY_API,{
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify(body),
+    redirect:"follow"
+  });
+  const text=await r.text();
+  let j;
+  try{j=JSON.parse(text)}catch(e){throw new Error("API 回傳不是 JSON："+text.slice(0,250))}
+  if(!j || j.ok!==true) throw new Error(j?.error||"API_ERROR");
+  return j;
+}
+async function getState(id){
+  const u=DISPLAY_API+"?action=state&deviceId="+encodeURIComponent(id)+"&_="+Date.now();
+  const r=await fetch(u,{cache:"no-store",redirect:"follow"});
+  const text=await r.text();
+  let j;
+  try{j=JSON.parse(text)}catch(e){throw new Error("STATE 回傳不是 JSON："+text.slice(0,250))}
+  return j;
+}
+function renderPayload(p){
+ const root=$("payload");
+ if(!p){root.innerHTML='<div class="empty"><h2>顯示器已連線</h2><p>等待管理後台發佈顯示內容</p></div>';return}
+ if(typeof p==="string"){root.innerHTML='<div class="empty"><h2>'+escapeHtml(p)+'</h2></div>';return}
+ if(p.html){root.innerHTML=p.html;return}
+ const rows=Array.isArray(p.rows)?p.rows:[],ui=p.ui||{},type=p.type||ui.kind||'';
+ if(type==='boss'){
+  const b=p.boss||{},max=Math.max(1,+b.initialHp||1),hp=Math.max(0,+b.hp||0),pct=Math.max(0,Math.min(100,hp/max*100)),logs=Array.isArray(p.attacks)?p.attacks:[];
+  const logHtml=logs.length?logs.map(x=>'<div class="boss-log-row"><span>'+escapeHtml(x.date||'—')+'</span><b>'+escapeHtml(x.member||'')+'</b><span>'+escapeHtml(x.method||'')+'</span><span>'+Number(x.damage||0).toLocaleString()+' HP'+(x.success?' 👑':'')+'</span></div>').join(''):'<div class="boss-latest">目前尚無攻擊紀錄</div>';
+  root.innerHTML='<div class="boss-screen"><div class="boss-head"><div class="en">EPC BOSS BATTLE</div><h1>👑 '+escapeHtml(p.title||'雙十狩王')+'</h1></div>'+
+  '<div class="boss-dashboard"><div class="boss-stat boss-count-stat"><span>活動累積參賽紀錄</span><b>'+Number(p.participants||0).toLocaleString()+' 人次</b><small>此數字為參賽人次，不代表獎池金額</small></div><div class="boss-stat boss-count-stat"><span>活動累積重買組數</span><b>'+Number(p.groups||0).toLocaleString()+' 組</b><small>此數字為重買組數，不代表獎池金額</small></div><div class="boss-stat boss-pool-stat"><span>目前 BOSS 獎池</span><b>&#36;'+Number(p.pool||0).toLocaleString()+'</b><small>上限 &#36;'+Number(p.cap||0).toLocaleString()+'｜組數加碼已累積 &#36;'+Number(p.groupAmount||0).toLocaleString()+'</small></div><div class="boss-stat"><span>剩餘血量</span><b>'+hp.toLocaleString()+' HP</b></div><div class="boss-stat"><span>攻擊階段</span><b class="'+(p.attackActive?'boss-status-on':'boss-status-off')+'">'+(p.attackActive?'已啟用':'尚未啟用')+'</b></div><div class="boss-stat"><span>組數加碼達標</span><b>'+Number(p.groupQualifyingEvents||0).toLocaleString()+' 場</b><small>每場獨立計算</small></div></div>'+
+  '<div class="boss-main"><div class="boss-card"><div class="boss-name">'+escapeHtml(b.name||'等待魔王登場')+'</div><div class="boss-hpbar"><div class="boss-hpfill" style="width:'+pct+'%"></div></div><div class="boss-hptxt">HP　'+hp.toLocaleString()+' / '+max.toLocaleString()+'</div><div class="boss-pool">目前獎池 <b>&#36;'+Number(p.pool||0).toLocaleString()+'</b> / &#36;'+Number(p.cap||0).toLocaleString()+'<div style="font-size:.58em;margin-top:.35em;color:#ffd27b">組數加碼採單場獨立計算｜16組起，每8組再 +&#36;'+Number(p.groupBonus||0).toLocaleString()+'</div></div></div><div class="boss-log"><h2>⚔ 攻擊紀錄</h2>'+logHtml+'</div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+ }
+ if(rows.length||Array.isArray(p.rows)){
+  const limit=Math.max(3,+ui.limit||10),rws=rows.slice(0,limit),medals=['🥇','🥈','🥉'];
+  if(type==='rank'){
+   const top=rws.slice(0,3),rest=rws.slice(3);
+   const period=escapeHtml(p.period||p.dateRange||p.range||'活動進行中');
+   const card=(r,i,first)=>r?'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>':'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">—</div><div class="rp-points">0<small>分</small></div></div>';
+   root.innerHTML='<div class="rank-poster"><div class="rp-casino-deco"><div class="rp-card c1">A<br>♠</div><div class="rp-card c2">A<br>♥</div><div class="rp-chipstack left"><i></i><i></i><i></i><i></i></div><div class="rp-chipstack right"><i></i><i></i><i></i><i></i></div></div><div class="rp-topline"><div class="rp-brand"><div class="rp-brand-main">♠ EPC</div><div class="rp-brand-sub">EIGHT POKER CLUB</div></div><div class="rp-head"><div class="rp-kicker">WEEKLY LEADERBOARD</div><div class="rp-title">週排行榜</div><div class="rp-sub">用實力爭取榮耀！</div></div><div class="rp-period"><b>活動區間</b><span>'+period+'</span></div></div><div class="rp-podium">'+card(top[1],1,false)+card(top[0],0,true)+card(top[2],2,false)+'</div><div class="rp-rest-wrap"><div class="rp-rest-head"><span>名次</span><span>玩家</span><span>總分</span></div><div class="rp-rest"><div class="rp-rest-col">'+rest.slice(0,4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+4)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div><div class="rp-rest-col">'+rest.slice(4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+8)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div></div></div><div class="rp-foot">EPC ・ MORE THAN POKER</div></div>';return;
+  }
+  let value=x=>type==='weekly'?((x.days||0)+' 天 / '+(x.games||0)+' 場'):type==='umbrella'?((x.score||0)+' 張'):((x.score??x.total??0)+' 分');
+  const meta={weekly:['WEEKLY MISSION','每週任務卡','累積出席・完成任務'],pioneer:['OPENING PIONEER','開桌先鋒榜','搶先報名・累積先鋒積分'],hunter:['HUNTER RANKING','獵人榜','淘汰對手・成為獵人'],umbrella:['UMBRELLA REWARDS','保護傘','累積獎勵・即時掌握進度']}[type]||['EPC ACTIVITY',p.title||'EPC 活動',''];
+  const left=rws.slice(0,Math.ceil(rws.length/2)),right=rws.slice(Math.ceil(rws.length/2));
+  const mk=(arr,offset)=>arr.map((r,i)=>'<div class="as-row"><div class="as-no">#'+(offset+i+1)+'</div><div class="as-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="as-value">'+escapeHtml(value(r))+'</div></div>').join('');
+  root.innerHTML='<div class="activity-screen '+escapeHtml(type)+'"><div class="as-head"><div class="as-brand"><b>♠ EPC</b><small>EIGHT POKER CLUB</small></div><div class="as-title"><div class="en">'+meta[0]+'</div><h1>'+meta[1]+'</h1><p>'+meta[2]+'</p></div><div></div></div><div class="as-main"><div class="as-grid"><div class="rp-rest-col">'+mk(left,0)+'</div><div class="rp-rest-col">'+mk(right,left.length)+'</div></div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+
+ if(p.title||p.subtitle){root.innerHTML='<div class="empty"><h2>'+escapeHtml(p.title||'')+'</h2><p>'+escapeHtml(p.subtitle||'')+'</p></div>';return}
+ root.innerHTML="<pre>"+escapeHtml(JSON.stringify(p,null,2))+"</pre>";
+}
+function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+let heartbeatTimer=null;
+function paired(){
+  $("pairScreen").style.display="none";
+  $("displayScreen").classList.add("active");
+}
+function unpaired_(code){
+  if(heartbeatTimer){clearInterval(heartbeatTimer);heartbeatTimer=null}
+  displayLastPayload_=null;
+  $("displayScreen").classList.remove("active");
+  $("pairScreen").style.display="";
+  $("payload").innerHTML='<div class="empty"><h2>顯示器已解除配對</h2><p>請使用新的 6 位數配對碼重新連線</p></div>';
+  if(code)showCode(code);
+  status("此顯示器尚未配對，請到管理後台輸入上方 6 位數","ok");
+  $("debug").style.display="none";
+}
+function startHeartbeat(id){
+  if(heartbeatTimer) return;
+  const beat=async()=>{try{await post({action:"register",deviceId:id})}catch(e){}};
+  beat();
+  heartbeatTimer=setInterval(beat,10000);
+}
+let displayPollFailures_=0;
+let displayLastPayload_=null;
+async function poll(id){
+  try{
+    const s=await getState(id);
+    displayPollFailures_=0;
+    if(s.ok && s.paired){
+      paired();
+      startHeartbeat(id);
+      if(s.payload!==undefined && s.payload!==null){
+        displayLastPayload_=s.payload;
+        renderPayload(s.payload);
+      }else if(displayLastPayload_!==null){
+        renderPayload(displayLastPayload_);
+      }
+    }else if(s.ok){
+      unpaired_(s.code||"");
+    }
+  }catch(e){
+    // Temporary network/API failures must not blank or reset the TV.
+    // Keep the last successfully rendered payload and retry automatically.
+    displayPollFailures_++;
+    if(displayLastPayload_!==null && displayPollFailures_===1)renderPayload(displayLastPayload_);
+  }
+  setTimeout(()=>poll(id),POLL_MS);
+}
+async function boot(){
+  showCode("");
+  const id=deviceId();
+  try{
+    const j=await post({action:"register",deviceId:id});
+    if(!j.code) throw new Error("REGISTER 成功，但 API 沒有回傳 code");
+    showCode(j.code);
+    if(j.paired){
+      status("此顯示器已配對，正在載入內容…","ok");
+      paired();
+      startHeartbeat(id);
+    }else{
+      status("配對碼已產生，請到管理後台輸入上方 6 位數","ok");
+    }
+    poll(id);
+  }catch(e){
+    fail("無法取得配對碼",String(e && e.message || e));
+  }
+}
+boot();
+</script>
+</body>
+</html>+Number(p.groupAmount||0).toLocaleString()+'</small></div><div class="boss-stat"><span>目前總累積</span><b>$'+Number(p.pool||0).toLocaleString()+'</b></div><div class="boss-stat"><span>剩餘血量</span><b>'+hp.toLocaleString()+' HP</b></div><div class="boss-stat"><span>攻擊階段</span><b class="'+(p.attackActive?'boss-status-on':'boss-status-off')+'">'+(p.attackActive?'已啟用':'尚未啟用')+'</b></div></div>'+
+  '<div class="boss-main"><div class="boss-card"><div class="boss-name">'+escapeHtml(b.name||'等待魔王登場')+'</div><div class="boss-hpbar"><div class="boss-hpfill" style="width:'+pct+'%"></div></div><div class="boss-hptxt">HP　'+hp.toLocaleString()+' / '+max.toLocaleString()+'</div><div class="boss-pool">目前獎池 <b>$'+Number(p.pool||0).toLocaleString()+'</b> / $'+Number(p.cap||0).toLocaleString()+'</div></div><div class="boss-log"><h2>⚔ 攻擊紀錄</h2>'+logHtml+'</div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+ }
+ if(rows.length||Array.isArray(p.rows)){
+  const limit=Math.max(3,+ui.limit||10),rws=rows.slice(0,limit),medals=['🥇','🥈','🥉'];
+  if(type==='rank'){
+   const top=rws.slice(0,3),rest=rws.slice(3);
+   const period=escapeHtml(p.period||p.dateRange||p.range||'活動進行中');
+   const card=(r,i,first)=>r?'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>':'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">—</div><div class="rp-points">0<small>分</small></div></div>';
+   root.innerHTML='<div class="rank-poster"><div class="rp-casino-deco"><div class="rp-card c1">A<br>♠</div><div class="rp-card c2">A<br>♥</div><div class="rp-chipstack left"><i></i><i></i><i></i><i></i></div><div class="rp-chipstack right"><i></i><i></i><i></i><i></i></div></div><div class="rp-topline"><div class="rp-brand"><div class="rp-brand-main">♠ EPC</div><div class="rp-brand-sub">EIGHT POKER CLUB</div></div><div class="rp-head"><div class="rp-kicker">WEEKLY LEADERBOARD</div><div class="rp-title">週排行榜</div><div class="rp-sub">用實力爭取榮耀！</div></div><div class="rp-period"><b>活動區間</b><span>'+period+'</span></div></div><div class="rp-podium">'+card(top[1],1,false)+card(top[0],0,true)+card(top[2],2,false)+'</div><div class="rp-rest-wrap"><div class="rp-rest-head"><span>名次</span><span>玩家</span><span>總分</span></div><div class="rp-rest"><div class="rp-rest-col">'+rest.slice(0,4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+4)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div><div class="rp-rest-col">'+rest.slice(4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+8)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div></div></div><div class="rp-foot">EPC ・ MORE THAN POKER</div></div>';return;
+  }
+  let value=x=>type==='weekly'?((x.days||0)+' 天 / '+(x.games||0)+' 場'):type==='umbrella'?((x.score||0)+' 張'):((x.score??x.total??0)+' 分');
+  const meta={weekly:['WEEKLY MISSION','每週任務卡','累積出席・完成任務'],pioneer:['OPENING PIONEER','開桌先鋒榜','搶先報名・累積先鋒積分'],hunter:['HUNTER RANKING','獵人榜','淘汰對手・成為獵人'],umbrella:['UMBRELLA REWARDS','保護傘','累積獎勵・即時掌握進度']}[type]||['EPC ACTIVITY',p.title||'EPC 活動',''];
+  const left=rws.slice(0,Math.ceil(rws.length/2)),right=rws.slice(Math.ceil(rws.length/2));
+  const mk=(arr,offset)=>arr.map((r,i)=>'<div class="as-row"><div class="as-no">#'+(offset+i+1)+'</div><div class="as-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="as-value">'+escapeHtml(value(r))+'</div></div>').join('');
+  root.innerHTML='<div class="activity-screen '+escapeHtml(type)+'"><div class="as-head"><div class="as-brand"><b>♠ EPC</b><small>EIGHT POKER CLUB</small></div><div class="as-title"><div class="en">'+meta[0]+'</div><h1>'+meta[1]+'</h1><p>'+meta[2]+'</p></div><div></div></div><div class="as-main"><div class="as-grid"><div class="rp-rest-col">'+mk(left,0)+'</div><div class="rp-rest-col">'+mk(right,left.length)+'</div></div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+
+ if(p.title||p.subtitle){root.innerHTML='<div class="empty"><h2>'+escapeHtml(p.title||'')+'</h2><p>'+escapeHtml(p.subtitle||'')+'</p></div>';return}
+ root.innerHTML="<pre>"+escapeHtml(JSON.stringify(p,null,2))+"</pre>";
+}
+function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+let heartbeatTimer=null;
+function paired(){
+  $("pairScreen").style.display="none";
+  $("displayScreen").classList.add("active");
+}
+function startHeartbeat(id){
+  if(heartbeatTimer) return;
+  const beat=async()=>{try{await post({action:"register",deviceId:id})}catch(e){}};
+  beat();
+  heartbeatTimer=setInterval(beat,10000);
+}
+async function poll(id){
+  try{
+    const s=await getState(id);
+    if(s.ok && s.paired){
+      paired();
+      startHeartbeat(id);
+      renderPayload(s.payload);
+    }else if(s.ok){
+      if(s.code) showCode(s.code);
+    }
+  }catch(e){}
+  setTimeout(()=>poll(id),POLL_MS);
+}
+async function boot(){
+  showCode("");
+  const id=deviceId();
+  try{
+    const j=await post({action:"register",deviceId:id});
+    if(!j.code) throw new Error("REGISTER 成功，但 API 沒有回傳 code");
+    showCode(j.code);
+    if(j.paired){
+      status("此顯示器已配對，正在載入內容…","ok");
+      paired();
+      startHeartbeat(id);
+    }else{
+      status("配對碼已產生，請到管理後台輸入上方 6 位數","ok");
+    }
+    poll(id);
+  }catch(e){
+    fail("無法取得配對碼",String(e && e.message || e));
+  }
+}
+boot();
+</script>
+</body>
+</html>+Number(p.pool||0).toLocaleString()+'</b> / </div><div class="boss-log"><h2>⚔ 攻擊紀錄</h2>'+logHtml+'</div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+ }
+ if(rows.length||Array.isArray(p.rows)){
+  const limit=Math.max(3,+ui.limit||10),rws=rows.slice(0,limit),medals=['🥇','🥈','🥉'];
+  if(type==='rank'){
+   const top=rws.slice(0,3),rest=rws.slice(3);
+   const period=escapeHtml(p.period||p.dateRange||p.range||'活動進行中');
+   const card=(r,i,first)=>r?'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>':'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">—</div><div class="rp-points">0<small>分</small></div></div>';
+   root.innerHTML='<div class="rank-poster"><div class="rp-casino-deco"><div class="rp-card c1">A<br>♠</div><div class="rp-card c2">A<br>♥</div><div class="rp-chipstack left"><i></i><i></i><i></i><i></i></div><div class="rp-chipstack right"><i></i><i></i><i></i><i></i></div></div><div class="rp-topline"><div class="rp-brand"><div class="rp-brand-main">♠ EPC</div><div class="rp-brand-sub">EIGHT POKER CLUB</div></div><div class="rp-head"><div class="rp-kicker">WEEKLY LEADERBOARD</div><div class="rp-title">週排行榜</div><div class="rp-sub">用實力爭取榮耀！</div></div><div class="rp-period"><b>活動區間</b><span>'+period+'</span></div></div><div class="rp-podium">'+card(top[1],1,false)+card(top[0],0,true)+card(top[2],2,false)+'</div><div class="rp-rest-wrap"><div class="rp-rest-head"><span>名次</span><span>玩家</span><span>總分</span></div><div class="rp-rest"><div class="rp-rest-col">'+rest.slice(0,4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+4)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div><div class="rp-rest-col">'+rest.slice(4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+8)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div></div></div><div class="rp-foot">EPC ・ MORE THAN POKER</div></div>';return;
+  }
+  let value=x=>type==='weekly'?((x.days||0)+' 天 / '+(x.games||0)+' 場'):type==='umbrella'?((x.score||0)+' 張'):((x.score??x.total??0)+' 分');
+  const meta={weekly:['WEEKLY MISSION','每週任務卡','累積出席・完成任務'],pioneer:['OPENING PIONEER','開桌先鋒榜','搶先報名・累積先鋒積分'],hunter:['HUNTER RANKING','獵人榜','淘汰對手・成為獵人'],umbrella:['UMBRELLA REWARDS','保護傘','累積獎勵・即時掌握進度']}[type]||['EPC ACTIVITY',p.title||'EPC 活動',''];
+  const left=rws.slice(0,Math.ceil(rws.length/2)),right=rws.slice(Math.ceil(rws.length/2));
+  const mk=(arr,offset)=>arr.map((r,i)=>'<div class="as-row"><div class="as-no">#'+(offset+i+1)+'</div><div class="as-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="as-value">'+escapeHtml(value(r))+'</div></div>').join('');
+  root.innerHTML='<div class="activity-screen '+escapeHtml(type)+'"><div class="as-head"><div class="as-brand"><b>♠ EPC</b><small>EIGHT POKER CLUB</small></div><div class="as-title"><div class="en">'+meta[0]+'</div><h1>'+meta[1]+'</h1><p>'+meta[2]+'</p></div><div></div></div><div class="as-main"><div class="as-grid"><div class="rp-rest-col">'+mk(left,0)+'</div><div class="rp-rest-col">'+mk(right,left.length)+'</div></div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+
+ if(p.title||p.subtitle){root.innerHTML='<div class="empty"><h2>'+escapeHtml(p.title||'')+'</h2><p>'+escapeHtml(p.subtitle||'')+'</p></div>';return}
+ root.innerHTML="<pre>"+escapeHtml(JSON.stringify(p,null,2))+"</pre>";
+}
+function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+let heartbeatTimer=null;
+function paired(){
+  $("pairScreen").style.display="none";
+  $("displayScreen").classList.add("active");
+}
+function startHeartbeat(id){
+  if(heartbeatTimer) return;
+  const beat=async()=>{try{await post({action:"register",deviceId:id})}catch(e){}};
+  beat();
+  heartbeatTimer=setInterval(beat,10000);
+}
+async function poll(id){
+  try{
+    const s=await getState(id);
+    if(s.ok && s.paired){
+      paired();
+      startHeartbeat(id);
+      renderPayload(s.payload);
+    }else if(s.ok){
+      if(s.code) showCode(s.code);
+    }
+  }catch(e){}
+  setTimeout(()=>poll(id),POLL_MS);
+}
+async function boot(){
+  showCode("");
+  const id=deviceId();
+  try{
+    const j=await post({action:"register",deviceId:id});
+    if(!j.code) throw new Error("REGISTER 成功，但 API 沒有回傳 code");
+    showCode(j.code);
+    if(j.paired){
+      status("此顯示器已配對，正在載入內容…","ok");
+      paired();
+      startHeartbeat(id);
+    }else{
+      status("配對碼已產生，請到管理後台輸入上方 6 位數","ok");
+    }
+    poll(id);
+  }catch(e){
+    fail("無法取得配對碼",String(e && e.message || e));
+  }
+}
+boot();
+</script>
+</body>
+</html>+Number(p.groupAmount||0).toLocaleString()+'</small></div><div class="boss-stat"><span>目前總累積</span><b>$'+Number(p.pool||0).toLocaleString()+'</b></div><div class="boss-stat"><span>剩餘血量</span><b>'+hp.toLocaleString()+' HP</b></div><div class="boss-stat"><span>攻擊階段</span><b class="'+(p.attackActive?'boss-status-on':'boss-status-off')+'">'+(p.attackActive?'已啟用':'尚未啟用')+'</b></div></div>'+
+  '<div class="boss-main"><div class="boss-card"><div class="boss-name">'+escapeHtml(b.name||'等待魔王登場')+'</div><div class="boss-hpbar"><div class="boss-hpfill" style="width:'+pct+'%"></div></div><div class="boss-hptxt">HP　'+hp.toLocaleString()+' / '+max.toLocaleString()+'</div><div class="boss-pool">目前獎池 <b>$'+Number(p.pool||0).toLocaleString()+'</b> / $'+Number(p.cap||0).toLocaleString()+'</div></div><div class="boss-log"><h2>⚔ 攻擊紀錄</h2>'+logHtml+'</div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+ }
+ if(rows.length||Array.isArray(p.rows)){
+  const limit=Math.max(3,+ui.limit||10),rws=rows.slice(0,limit),medals=['🥇','🥈','🥉'];
+  if(type==='rank'){
+   const top=rws.slice(0,3),rest=rws.slice(3);
+   const period=escapeHtml(p.period||p.dateRange||p.range||'活動進行中');
+   const card=(r,i,first)=>r?'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>':'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">—</div><div class="rp-points">0<small>分</small></div></div>';
+   root.innerHTML='<div class="rank-poster"><div class="rp-casino-deco"><div class="rp-card c1">A<br>♠</div><div class="rp-card c2">A<br>♥</div><div class="rp-chipstack left"><i></i><i></i><i></i><i></i></div><div class="rp-chipstack right"><i></i><i></i><i></i><i></i></div></div><div class="rp-topline"><div class="rp-brand"><div class="rp-brand-main">♠ EPC</div><div class="rp-brand-sub">EIGHT POKER CLUB</div></div><div class="rp-head"><div class="rp-kicker">WEEKLY LEADERBOARD</div><div class="rp-title">週排行榜</div><div class="rp-sub">用實力爭取榮耀！</div></div><div class="rp-period"><b>活動區間</b><span>'+period+'</span></div></div><div class="rp-podium">'+card(top[1],1,false)+card(top[0],0,true)+card(top[2],2,false)+'</div><div class="rp-rest-wrap"><div class="rp-rest-head"><span>名次</span><span>玩家</span><span>總分</span></div><div class="rp-rest"><div class="rp-rest-col">'+rest.slice(0,4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+4)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div><div class="rp-rest-col">'+rest.slice(4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+8)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div></div></div><div class="rp-foot">EPC ・ MORE THAN POKER</div></div>';return;
+  }
+  let value=x=>type==='weekly'?((x.days||0)+' 天 / '+(x.games||0)+' 場'):type==='umbrella'?((x.score||0)+' 張'):((x.score??x.total??0)+' 分');
+  const meta={weekly:['WEEKLY MISSION','每週任務卡','累積出席・完成任務'],pioneer:['OPENING PIONEER','開桌先鋒榜','搶先報名・累積先鋒積分'],hunter:['HUNTER RANKING','獵人榜','淘汰對手・成為獵人'],umbrella:['UMBRELLA REWARDS','保護傘','累積獎勵・即時掌握進度']}[type]||['EPC ACTIVITY',p.title||'EPC 活動',''];
+  const left=rws.slice(0,Math.ceil(rws.length/2)),right=rws.slice(Math.ceil(rws.length/2));
+  const mk=(arr,offset)=>arr.map((r,i)=>'<div class="as-row"><div class="as-no">#'+(offset+i+1)+'</div><div class="as-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="as-value">'+escapeHtml(value(r))+'</div></div>').join('');
+  root.innerHTML='<div class="activity-screen '+escapeHtml(type)+'"><div class="as-head"><div class="as-brand"><b>♠ EPC</b><small>EIGHT POKER CLUB</small></div><div class="as-title"><div class="en">'+meta[0]+'</div><h1>'+meta[1]+'</h1><p>'+meta[2]+'</p></div><div></div></div><div class="as-main"><div class="as-grid"><div class="rp-rest-col">'+mk(left,0)+'</div><div class="rp-rest-col">'+mk(right,left.length)+'</div></div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+
+ if(p.title||p.subtitle){root.innerHTML='<div class="empty"><h2>'+escapeHtml(p.title||'')+'</h2><p>'+escapeHtml(p.subtitle||'')+'</p></div>';return}
+ root.innerHTML="<pre>"+escapeHtml(JSON.stringify(p,null,2))+"</pre>";
+}
+function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+let heartbeatTimer=null;
+function paired(){
+  $("pairScreen").style.display="none";
+  $("displayScreen").classList.add("active");
+}
+function startHeartbeat(id){
+  if(heartbeatTimer) return;
+  const beat=async()=>{try{await post({action:"register",deviceId:id})}catch(e){}};
+  beat();
+  heartbeatTimer=setInterval(beat,10000);
+}
+async function poll(id){
+  try{
+    const s=await getState(id);
+    if(s.ok && s.paired){
+      paired();
+      startHeartbeat(id);
+      renderPayload(s.payload);
+    }else if(s.ok){
+      if(s.code) showCode(s.code);
+    }
+  }catch(e){}
+  setTimeout(()=>poll(id),POLL_MS);
+}
+async function boot(){
+  showCode("");
+  const id=deviceId();
+  try{
+    const j=await post({action:"register",deviceId:id});
+    if(!j.code) throw new Error("REGISTER 成功，但 API 沒有回傳 code");
+    showCode(j.code);
+    if(j.paired){
+      status("此顯示器已配對，正在載入內容…","ok");
+      paired();
+      startHeartbeat(id);
+    }else{
+      status("配對碼已產生，請到管理後台輸入上方 6 位數","ok");
+    }
+    poll(id);
+  }catch(e){
+    fail("無法取得配對碼",String(e && e.message || e));
+  }
+}
+boot();
+</script>
+</body>
+</html>+Number(p.cap||0).toLocaleString()+'<div style="font-size:.58em;margin-top:.35em;color:#ffd27b">組數加碼採單場獨立計算｜16組起，每8組再 +</div><div class="boss-log"><h2>⚔ 攻擊紀錄</h2>'+logHtml+'</div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+ }
+ if(rows.length||Array.isArray(p.rows)){
+  const limit=Math.max(3,+ui.limit||10),rws=rows.slice(0,limit),medals=['🥇','🥈','🥉'];
+  if(type==='rank'){
+   const top=rws.slice(0,3),rest=rws.slice(3);
+   const period=escapeHtml(p.period||p.dateRange||p.range||'活動進行中');
+   const card=(r,i,first)=>r?'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>':'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">—</div><div class="rp-points">0<small>分</small></div></div>';
+   root.innerHTML='<div class="rank-poster"><div class="rp-casino-deco"><div class="rp-card c1">A<br>♠</div><div class="rp-card c2">A<br>♥</div><div class="rp-chipstack left"><i></i><i></i><i></i><i></i></div><div class="rp-chipstack right"><i></i><i></i><i></i><i></i></div></div><div class="rp-topline"><div class="rp-brand"><div class="rp-brand-main">♠ EPC</div><div class="rp-brand-sub">EIGHT POKER CLUB</div></div><div class="rp-head"><div class="rp-kicker">WEEKLY LEADERBOARD</div><div class="rp-title">週排行榜</div><div class="rp-sub">用實力爭取榮耀！</div></div><div class="rp-period"><b>活動區間</b><span>'+period+'</span></div></div><div class="rp-podium">'+card(top[1],1,false)+card(top[0],0,true)+card(top[2],2,false)+'</div><div class="rp-rest-wrap"><div class="rp-rest-head"><span>名次</span><span>玩家</span><span>總分</span></div><div class="rp-rest"><div class="rp-rest-col">'+rest.slice(0,4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+4)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div><div class="rp-rest-col">'+rest.slice(4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+8)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div></div></div><div class="rp-foot">EPC ・ MORE THAN POKER</div></div>';return;
+  }
+  let value=x=>type==='weekly'?((x.days||0)+' 天 / '+(x.games||0)+' 場'):type==='umbrella'?((x.score||0)+' 張'):((x.score??x.total??0)+' 分');
+  const meta={weekly:['WEEKLY MISSION','每週任務卡','累積出席・完成任務'],pioneer:['OPENING PIONEER','開桌先鋒榜','搶先報名・累積先鋒積分'],hunter:['HUNTER RANKING','獵人榜','淘汰對手・成為獵人'],umbrella:['UMBRELLA REWARDS','保護傘','累積獎勵・即時掌握進度']}[type]||['EPC ACTIVITY',p.title||'EPC 活動',''];
+  const left=rws.slice(0,Math.ceil(rws.length/2)),right=rws.slice(Math.ceil(rws.length/2));
+  const mk=(arr,offset)=>arr.map((r,i)=>'<div class="as-row"><div class="as-no">#'+(offset+i+1)+'</div><div class="as-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="as-value">'+escapeHtml(value(r))+'</div></div>').join('');
+  root.innerHTML='<div class="activity-screen '+escapeHtml(type)+'"><div class="as-head"><div class="as-brand"><b>♠ EPC</b><small>EIGHT POKER CLUB</small></div><div class="as-title"><div class="en">'+meta[0]+'</div><h1>'+meta[1]+'</h1><p>'+meta[2]+'</p></div><div></div></div><div class="as-main"><div class="as-grid"><div class="rp-rest-col">'+mk(left,0)+'</div><div class="rp-rest-col">'+mk(right,left.length)+'</div></div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+
+ if(p.title||p.subtitle){root.innerHTML='<div class="empty"><h2>'+escapeHtml(p.title||'')+'</h2><p>'+escapeHtml(p.subtitle||'')+'</p></div>';return}
+ root.innerHTML="<pre>"+escapeHtml(JSON.stringify(p,null,2))+"</pre>";
+}
+function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+let heartbeatTimer=null;
+function paired(){
+  $("pairScreen").style.display="none";
+  $("displayScreen").classList.add("active");
+}
+function startHeartbeat(id){
+  if(heartbeatTimer) return;
+  const beat=async()=>{try{await post({action:"register",deviceId:id})}catch(e){}};
+  beat();
+  heartbeatTimer=setInterval(beat,10000);
+}
+async function poll(id){
+  try{
+    const s=await getState(id);
+    if(s.ok && s.paired){
+      paired();
+      startHeartbeat(id);
+      renderPayload(s.payload);
+    }else if(s.ok){
+      if(s.code) showCode(s.code);
+    }
+  }catch(e){}
+  setTimeout(()=>poll(id),POLL_MS);
+}
+async function boot(){
+  showCode("");
+  const id=deviceId();
+  try{
+    const j=await post({action:"register",deviceId:id});
+    if(!j.code) throw new Error("REGISTER 成功，但 API 沒有回傳 code");
+    showCode(j.code);
+    if(j.paired){
+      status("此顯示器已配對，正在載入內容…","ok");
+      paired();
+      startHeartbeat(id);
+    }else{
+      status("配對碼已產生，請到管理後台輸入上方 6 位數","ok");
+    }
+    poll(id);
+  }catch(e){
+    fail("無法取得配對碼",String(e && e.message || e));
+  }
+}
+boot();
+</script>
+</body>
+</html>+Number(p.groupAmount||0).toLocaleString()+'</small></div><div class="boss-stat"><span>目前總累積</span><b>$'+Number(p.pool||0).toLocaleString()+'</b></div><div class="boss-stat"><span>剩餘血量</span><b>'+hp.toLocaleString()+' HP</b></div><div class="boss-stat"><span>攻擊階段</span><b class="'+(p.attackActive?'boss-status-on':'boss-status-off')+'">'+(p.attackActive?'已啟用':'尚未啟用')+'</b></div></div>'+
+  '<div class="boss-main"><div class="boss-card"><div class="boss-name">'+escapeHtml(b.name||'等待魔王登場')+'</div><div class="boss-hpbar"><div class="boss-hpfill" style="width:'+pct+'%"></div></div><div class="boss-hptxt">HP　'+hp.toLocaleString()+' / '+max.toLocaleString()+'</div><div class="boss-pool">目前獎池 <b>$'+Number(p.pool||0).toLocaleString()+'</b> / $'+Number(p.cap||0).toLocaleString()+'</div></div><div class="boss-log"><h2>⚔ 攻擊紀錄</h2>'+logHtml+'</div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+ }
+ if(rows.length||Array.isArray(p.rows)){
+  const limit=Math.max(3,+ui.limit||10),rws=rows.slice(0,limit),medals=['🥇','🥈','🥉'];
+  if(type==='rank'){
+   const top=rws.slice(0,3),rest=rws.slice(3);
+   const period=escapeHtml(p.period||p.dateRange||p.range||'活動進行中');
+   const card=(r,i,first)=>r?'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>':'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">—</div><div class="rp-points">0<small>分</small></div></div>';
+   root.innerHTML='<div class="rank-poster"><div class="rp-casino-deco"><div class="rp-card c1">A<br>♠</div><div class="rp-card c2">A<br>♥</div><div class="rp-chipstack left"><i></i><i></i><i></i><i></i></div><div class="rp-chipstack right"><i></i><i></i><i></i><i></i></div></div><div class="rp-topline"><div class="rp-brand"><div class="rp-brand-main">♠ EPC</div><div class="rp-brand-sub">EIGHT POKER CLUB</div></div><div class="rp-head"><div class="rp-kicker">WEEKLY LEADERBOARD</div><div class="rp-title">週排行榜</div><div class="rp-sub">用實力爭取榮耀！</div></div><div class="rp-period"><b>活動區間</b><span>'+period+'</span></div></div><div class="rp-podium">'+card(top[1],1,false)+card(top[0],0,true)+card(top[2],2,false)+'</div><div class="rp-rest-wrap"><div class="rp-rest-head"><span>名次</span><span>玩家</span><span>總分</span></div><div class="rp-rest"><div class="rp-rest-col">'+rest.slice(0,4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+4)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div><div class="rp-rest-col">'+rest.slice(4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+8)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div></div></div><div class="rp-foot">EPC ・ MORE THAN POKER</div></div>';return;
+  }
+  let value=x=>type==='weekly'?((x.days||0)+' 天 / '+(x.games||0)+' 場'):type==='umbrella'?((x.score||0)+' 張'):((x.score??x.total??0)+' 分');
+  const meta={weekly:['WEEKLY MISSION','每週任務卡','累積出席・完成任務'],pioneer:['OPENING PIONEER','開桌先鋒榜','搶先報名・累積先鋒積分'],hunter:['HUNTER RANKING','獵人榜','淘汰對手・成為獵人'],umbrella:['UMBRELLA REWARDS','保護傘','累積獎勵・即時掌握進度']}[type]||['EPC ACTIVITY',p.title||'EPC 活動',''];
+  const left=rws.slice(0,Math.ceil(rws.length/2)),right=rws.slice(Math.ceil(rws.length/2));
+  const mk=(arr,offset)=>arr.map((r,i)=>'<div class="as-row"><div class="as-no">#'+(offset+i+1)+'</div><div class="as-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="as-value">'+escapeHtml(value(r))+'</div></div>').join('');
+  root.innerHTML='<div class="activity-screen '+escapeHtml(type)+'"><div class="as-head"><div class="as-brand"><b>♠ EPC</b><small>EIGHT POKER CLUB</small></div><div class="as-title"><div class="en">'+meta[0]+'</div><h1>'+meta[1]+'</h1><p>'+meta[2]+'</p></div><div></div></div><div class="as-main"><div class="as-grid"><div class="rp-rest-col">'+mk(left,0)+'</div><div class="rp-rest-col">'+mk(right,left.length)+'</div></div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+
+ if(p.title||p.subtitle){root.innerHTML='<div class="empty"><h2>'+escapeHtml(p.title||'')+'</h2><p>'+escapeHtml(p.subtitle||'')+'</p></div>';return}
+ root.innerHTML="<pre>"+escapeHtml(JSON.stringify(p,null,2))+"</pre>";
+}
+function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+let heartbeatTimer=null;
+function paired(){
+  $("pairScreen").style.display="none";
+  $("displayScreen").classList.add("active");
+}
+function startHeartbeat(id){
+  if(heartbeatTimer) return;
+  const beat=async()=>{try{await post({action:"register",deviceId:id})}catch(e){}};
+  beat();
+  heartbeatTimer=setInterval(beat,10000);
+}
+async function poll(id){
+  try{
+    const s=await getState(id);
+    if(s.ok && s.paired){
+      paired();
+      startHeartbeat(id);
+      renderPayload(s.payload);
+    }else if(s.ok){
+      if(s.code) showCode(s.code);
+    }
+  }catch(e){}
+  setTimeout(()=>poll(id),POLL_MS);
+}
+async function boot(){
+  showCode("");
+  const id=deviceId();
+  try{
+    const j=await post({action:"register",deviceId:id});
+    if(!j.code) throw new Error("REGISTER 成功，但 API 沒有回傳 code");
+    showCode(j.code);
+    if(j.paired){
+      status("此顯示器已配對，正在載入內容…","ok");
+      paired();
+      startHeartbeat(id);
+    }else{
+      status("配對碼已產生，請到管理後台輸入上方 6 位數","ok");
+    }
+    poll(id);
+  }catch(e){
+    fail("無法取得配對碼",String(e && e.message || e));
+  }
+}
+boot();
+</script>
+</body>
+</html>+Number(p.groupBonus||0).toLocaleString()+'</div></div></div><div class="boss-log"><h2>⚔ 攻擊紀錄</h2>'+logHtml+'</div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+ }
+ if(rows.length||Array.isArray(p.rows)){
+  const limit=Math.max(3,+ui.limit||10),rws=rows.slice(0,limit),medals=['🥇','🥈','🥉'];
+  if(type==='rank'){
+   const top=rws.slice(0,3),rest=rws.slice(3);
+   const period=escapeHtml(p.period||p.dateRange||p.range||'活動進行中');
+   const card=(r,i,first)=>r?'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>':'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">—</div><div class="rp-points">0<small>分</small></div></div>';
+   root.innerHTML='<div class="rank-poster"><div class="rp-casino-deco"><div class="rp-card c1">A<br>♠</div><div class="rp-card c2">A<br>♥</div><div class="rp-chipstack left"><i></i><i></i><i></i><i></i></div><div class="rp-chipstack right"><i></i><i></i><i></i><i></i></div></div><div class="rp-topline"><div class="rp-brand"><div class="rp-brand-main">♠ EPC</div><div class="rp-brand-sub">EIGHT POKER CLUB</div></div><div class="rp-head"><div class="rp-kicker">WEEKLY LEADERBOARD</div><div class="rp-title">週排行榜</div><div class="rp-sub">用實力爭取榮耀！</div></div><div class="rp-period"><b>活動區間</b><span>'+period+'</span></div></div><div class="rp-podium">'+card(top[1],1,false)+card(top[0],0,true)+card(top[2],2,false)+'</div><div class="rp-rest-wrap"><div class="rp-rest-head"><span>名次</span><span>玩家</span><span>總分</span></div><div class="rp-rest"><div class="rp-rest-col">'+rest.slice(0,4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+4)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div><div class="rp-rest-col">'+rest.slice(4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+8)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div></div></div><div class="rp-foot">EPC ・ MORE THAN POKER</div></div>';return;
+  }
+  let value=x=>type==='weekly'?((x.days||0)+' 天 / '+(x.games||0)+' 場'):type==='umbrella'?((x.score||0)+' 張'):((x.score??x.total??0)+' 分');
+  const meta={weekly:['WEEKLY MISSION','每週任務卡','累積出席・完成任務'],pioneer:['OPENING PIONEER','開桌先鋒榜','搶先報名・累積先鋒積分'],hunter:['HUNTER RANKING','獵人榜','淘汰對手・成為獵人'],umbrella:['UMBRELLA REWARDS','保護傘','累積獎勵・即時掌握進度']}[type]||['EPC ACTIVITY',p.title||'EPC 活動',''];
+  const left=rws.slice(0,Math.ceil(rws.length/2)),right=rws.slice(Math.ceil(rws.length/2));
+  const mk=(arr,offset)=>arr.map((r,i)=>'<div class="as-row"><div class="as-no">#'+(offset+i+1)+'</div><div class="as-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="as-value">'+escapeHtml(value(r))+'</div></div>').join('');
+  root.innerHTML='<div class="activity-screen '+escapeHtml(type)+'"><div class="as-head"><div class="as-brand"><b>♠ EPC</b><small>EIGHT POKER CLUB</small></div><div class="as-title"><div class="en">'+meta[0]+'</div><h1>'+meta[1]+'</h1><p>'+meta[2]+'</p></div><div></div></div><div class="as-main"><div class="as-grid"><div class="rp-rest-col">'+mk(left,0)+'</div><div class="rp-rest-col">'+mk(right,left.length)+'</div></div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+
+ if(p.title||p.subtitle){root.innerHTML='<div class="empty"><h2>'+escapeHtml(p.title||'')+'</h2><p>'+escapeHtml(p.subtitle||'')+'</p></div>';return}
+ root.innerHTML="<pre>"+escapeHtml(JSON.stringify(p,null,2))+"</pre>";
+}
+function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+let heartbeatTimer=null;
+function paired(){
+  $("pairScreen").style.display="none";
+  $("displayScreen").classList.add("active");
+}
+function startHeartbeat(id){
+  if(heartbeatTimer) return;
+  const beat=async()=>{try{await post({action:"register",deviceId:id})}catch(e){}};
+  beat();
+  heartbeatTimer=setInterval(beat,10000);
+}
+async function poll(id){
+  try{
+    const s=await getState(id);
+    if(s.ok && s.paired){
+      paired();
+      startHeartbeat(id);
+      renderPayload(s.payload);
+    }else if(s.ok){
+      if(s.code) showCode(s.code);
+    }
+  }catch(e){}
+  setTimeout(()=>poll(id),POLL_MS);
+}
+async function boot(){
+  showCode("");
+  const id=deviceId();
+  try{
+    const j=await post({action:"register",deviceId:id});
+    if(!j.code) throw new Error("REGISTER 成功，但 API 沒有回傳 code");
+    showCode(j.code);
+    if(j.paired){
+      status("此顯示器已配對，正在載入內容…","ok");
+      paired();
+      startHeartbeat(id);
+    }else{
+      status("配對碼已產生，請到管理後台輸入上方 6 位數","ok");
+    }
+    poll(id);
+  }catch(e){
+    fail("無法取得配對碼",String(e && e.message || e));
+  }
+}
+boot();
+</script>
+</body>
+</html>+Number(p.groupAmount||0).toLocaleString()+'</small></div><div class="boss-stat"><span>目前總累積</span><b>$'+Number(p.pool||0).toLocaleString()+'</b></div><div class="boss-stat"><span>剩餘血量</span><b>'+hp.toLocaleString()+' HP</b></div><div class="boss-stat"><span>攻擊階段</span><b class="'+(p.attackActive?'boss-status-on':'boss-status-off')+'">'+(p.attackActive?'已啟用':'尚未啟用')+'</b></div></div>'+
+  '<div class="boss-main"><div class="boss-card"><div class="boss-name">'+escapeHtml(b.name||'等待魔王登場')+'</div><div class="boss-hpbar"><div class="boss-hpfill" style="width:'+pct+'%"></div></div><div class="boss-hptxt">HP　'+hp.toLocaleString()+' / '+max.toLocaleString()+'</div><div class="boss-pool">目前獎池 <b>$'+Number(p.pool||0).toLocaleString()+'</b> / $'+Number(p.cap||0).toLocaleString()+'</div></div><div class="boss-log"><h2>⚔ 攻擊紀錄</h2>'+logHtml+'</div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+ }
+ if(rows.length||Array.isArray(p.rows)){
+  const limit=Math.max(3,+ui.limit||10),rws=rows.slice(0,limit),medals=['🥇','🥈','🥉'];
+  if(type==='rank'){
+   const top=rws.slice(0,3),rest=rws.slice(3);
+   const period=escapeHtml(p.period||p.dateRange||p.range||'活動進行中');
+   const card=(r,i,first)=>r?'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>':'<div class="rp-winner '+(first?'first':'')+'"><div class="rp-medal">'+medals[i]+'</div><div class="rp-name">—</div><div class="rp-points">0<small>分</small></div></div>';
+   root.innerHTML='<div class="rank-poster"><div class="rp-casino-deco"><div class="rp-card c1">A<br>♠</div><div class="rp-card c2">A<br>♥</div><div class="rp-chipstack left"><i></i><i></i><i></i><i></i></div><div class="rp-chipstack right"><i></i><i></i><i></i><i></i></div></div><div class="rp-topline"><div class="rp-brand"><div class="rp-brand-main">♠ EPC</div><div class="rp-brand-sub">EIGHT POKER CLUB</div></div><div class="rp-head"><div class="rp-kicker">WEEKLY LEADERBOARD</div><div class="rp-title">週排行榜</div><div class="rp-sub">用實力爭取榮耀！</div></div><div class="rp-period"><b>活動區間</b><span>'+period+'</span></div></div><div class="rp-podium">'+card(top[1],1,false)+card(top[0],0,true)+card(top[2],2,false)+'</div><div class="rp-rest-wrap"><div class="rp-rest-head"><span>名次</span><span>玩家</span><span>總分</span></div><div class="rp-rest"><div class="rp-rest-col">'+rest.slice(0,4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+4)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div><div class="rp-rest-col">'+rest.slice(4).map((r,i)=>'<div class="rp-row"><div class="rp-no">#'+(i+8)+'</div><div class="rp-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="rp-points">'+Number(r.score??0)+'<small>分</small></div></div>').join('')+'</div></div></div><div class="rp-foot">EPC ・ MORE THAN POKER</div></div>';return;
+  }
+  let value=x=>type==='weekly'?((x.days||0)+' 天 / '+(x.games||0)+' 場'):type==='umbrella'?((x.score||0)+' 張'):((x.score??x.total??0)+' 分');
+  const meta={weekly:['WEEKLY MISSION','每週任務卡','累積出席・完成任務'],pioneer:['OPENING PIONEER','開桌先鋒榜','搶先報名・累積先鋒積分'],hunter:['HUNTER RANKING','獵人榜','淘汰對手・成為獵人'],umbrella:['UMBRELLA REWARDS','保護傘','累積獎勵・即時掌握進度']}[type]||['EPC ACTIVITY',p.title||'EPC 活動',''];
+  const left=rws.slice(0,Math.ceil(rws.length/2)),right=rws.slice(Math.ceil(rws.length/2));
+  const mk=(arr,offset)=>arr.map((r,i)=>'<div class="as-row"><div class="as-no">#'+(offset+i+1)+'</div><div class="as-name">'+escapeHtml(r.name||r.id||'')+'</div><div class="as-value">'+escapeHtml(value(r))+'</div></div>').join('');
+  root.innerHTML='<div class="activity-screen '+escapeHtml(type)+'"><div class="as-head"><div class="as-brand"><b>♠ EPC</b><small>EIGHT POKER CLUB</small></div><div class="as-title"><div class="en">'+meta[0]+'</div><h1>'+meta[1]+'</h1><p>'+meta[2]+'</p></div><div></div></div><div class="as-main"><div class="as-grid"><div class="rp-rest-col">'+mk(left,0)+'</div><div class="rp-rest-col">'+mk(right,left.length)+'</div></div></div><div class="as-foot">EPC ・ MORE THAN POKER</div></div>';return;
+
+ if(p.title||p.subtitle){root.innerHTML='<div class="empty"><h2>'+escapeHtml(p.title||'')+'</h2><p>'+escapeHtml(p.subtitle||'')+'</p></div>';return}
+ root.innerHTML="<pre>"+escapeHtml(JSON.stringify(p,null,2))+"</pre>";
+}
+function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+let heartbeatTimer=null;
+function paired(){
+  $("pairScreen").style.display="none";
+  $("displayScreen").classList.add("active");
+}
+function startHeartbeat(id){
+  if(heartbeatTimer) return;
+  const beat=async()=>{try{await post({action:"register",deviceId:id})}catch(e){}};
+  beat();
+  heartbeatTimer=setInterval(beat,10000);
+}
+async function poll(id){
+  try{
+    const s=await getState(id);
+    if(s.ok && s.paired){
+      paired();
+      startHeartbeat(id);
+      renderPayload(s.payload);
+    }else if(s.ok){
+      if(s.code) showCode(s.code);
+    }
+  }catch(e){}
+  setTimeout(()=>poll(id),POLL_MS);
+}
+async function boot(){
+  showCode("");
+  const id=deviceId();
+  try{
+    const j=await post({action:"register",deviceId:id});
+    if(!j.code) throw new Error("REGISTER 成功，但 API 沒有回傳 code");
+    showCode(j.code);
+    if(j.paired){
+      status("此顯示器已配對，正在載入內容…","ok");
+      paired();
+      startHeartbeat(id);
+    }else{
+      status("配對碼已產生，請到管理後台輸入上方 6 位數","ok");
+    }
+    poll(id);
+  }catch(e){
+    fail("無法取得配對碼",String(e && e.message || e));
+  }
+}
+boot();
+</script>
+</body>
+</html>
