@@ -29,3 +29,13 @@ document.querySelector('#memberSearch').addEventListener('input',()=>{clearTimeo
 document.querySelector('#memberPrev').addEventListener('click',()=>{if(MEMBER_PAGE>1){MEMBER_PAGE--;renderMembers()}});
 document.querySelector('#memberNext').addEventListener('click',()=>{MEMBER_PAGE++;renderMembers()});
 document.querySelector('#members tbody').addEventListener('click',async e=>{const edit=e.target.closest('.edit-member');if(edit){const m=MEMBER_ROWS.find(x=>x.memberKey===edit.dataset.key);if(m)openMemberModal(m);return}const del=e.target.closest('.delete-member');if(!del)return;const m=MEMBER_ROWS.find(x=>x.memberKey===del.dataset.key);if(!m)return;if(!confirm('確定永久刪除會員「'+m.name+'」（'+m.memberId+'）？\n\n這會刪除會員主表與會員 META 資料。'))return;if(!confirm('再次確認：永久刪除後無法從會員頁復原。確定刪除？'))return;del.disabled=true;try{await api('eight.members.delete',{memberKey:m.memberKey});MEMBER_ROWS=MEMBER_ROWS.filter(x=>x.memberKey!==m.memberKey);renderMembers();document.querySelector('#kMembers').textContent=money(MEMBER_ROWS.filter(x=>x.status!=='inactive').length)}catch(err){const msg={MEMBER_SOURCE_DUPLICATE_ID:'此 POKER FANS ID 有重複資料，為避免刪錯已停止刪除',MEMBER_NOT_FOUND:'找不到此會員'}[err.message]||err.message;alert('刪除失敗：'+msg);del.disabled=false}});
+
+const EVENT_PRESETS={3400:[3000,400],6600:[6000,600],11000:[10000,1000],21500:[20000,1500],32000:[30000,2000]};
+function openEventModal(){document.querySelector('#eventForm').reset();const d=document.querySelector('#eventDate').value||businessDate();document.querySelector('#eventBusinessDate').value=d;document.querySelector('#eventLevel').value='3400';document.querySelector('#eventBuyin').value=3000;document.querySelector('#eventFee').value=400;document.querySelector('#eventJP').value=3;document.querySelector('#eventFormState').textContent='';document.querySelector('#eventModal').hidden=false}
+function closeEventModal(){document.querySelector('#eventModal').hidden=true}
+document.querySelector('#eventDate').value=businessDate();
+document.querySelector('#eventTodayBtn').addEventListener('click',()=>document.querySelector('#eventDate').value=businessDate());
+document.querySelector('#createEventBtn').addEventListener('click',openEventModal);
+document.querySelectorAll('[data-close-event]').forEach(x=>x.addEventListener('click',closeEventModal));
+document.querySelector('#eventLevel').addEventListener('change',e=>{const p=EVENT_PRESETS[e.target.value];if(p){document.querySelector('#eventBuyin').value=p[0];document.querySelector('#eventFee').value=p[1]}});
+document.querySelector('#eventForm').addEventListener('submit',e=>{e.preventDefault();const state=document.querySelector('#eventFormState');state.textContent='賽事介面已完成；資料庫寫入 API 下一步接上';state.className='form-state good'});
