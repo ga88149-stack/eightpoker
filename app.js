@@ -24,21 +24,23 @@ function nextMemberId(){const used=new Set(MEMBER_ROWS.map(m=>String(m.memberId|
 function openMemberModal(member=null){document.querySelector('#memberForm').reset();document.querySelector('#memberKey').value=member?.memberKey||'';document.querySelector('#memberId').value=member?.memberId||nextMemberId();document.querySelector('#memberName').value=member?.name||'';document.querySelector('#memberNickname').value=member?.nickname||'';document.querySelector('#memberGroup').value=member?.group||'';document.querySelector('#memberBirth').value=member?.birth||'';document.querySelector('#memberPhone').value=member?.phone||'';document.querySelector('#memberAddress').value=member?.address||'';document.querySelector('#memberModalTitle').textContent=member?'編輯會員':'新增會員';document.querySelector('#memberFormState').textContent='';document.querySelector('#memberFormState').className='form-state';document.querySelector('#memberModal').hidden=false}
 function closeMemberModal(){document.querySelector('#memberModal').hidden=true}
 async function saveMember(e){e.preventDefault();const btn=document.querySelector('#memberSaveBtn'),state=document.querySelector('#memberFormState'),memberKey=document.querySelector('#memberKey').value;const data={memberId:document.querySelector('#memberId').value.trim(),name:document.querySelector('#memberName').value.trim(),nickname:document.querySelector('#memberNickname').value.trim(),group:document.querySelector('#memberGroup').value.trim(),birth:document.querySelector('#memberBirth').value.trim(),phone:document.querySelector('#memberPhone').value.trim(),address:document.querySelector('#memberAddress').value.trim()};if(memberKey){const original=MEMBER_ROWS.find(x=>x.memberKey===memberKey);['birth','phone','address'].forEach(k=>{if(original&&original[k]===undefined)delete data[k]})}if(!data.memberId||!data.name){state.textContent='POKER FANS ID 與姓名為必填';state.className='form-state bad';return}btn.disabled=true;state.textContent='儲存中…';try{if(memberKey)await api('eight.members.update',{memberKey,patch:data});else await api('eight.members.create',{member:data});state.textContent='儲存成功';state.className='form-state good';closeMemberModal();boot()}catch(err){console.error(err);const msg={MEMBER_ID_ALREADY_EXISTS:'POKER FANS ID 已存在',MEMBER_ID_REQUIRED:'POKER FANS ID 為必填',MEMBER_NAME_REQUIRED:'姓名為必填',MEMBER_NOT_FOUND:'找不到此會員'}[err.message]||err.message;state.textContent='儲存失敗：'+msg;state.className='form-state bad'}finally{btn.disabled=false}}
-async function boot(){
+async function boot(force=false){
  refreshBusinessDay();if(!CONFIG.apiUrl){setSync('資料庫：等待 Apps Script 部署');return}
  let cached=[];try{cached=JSON.parse(localStorage.getItem('eightMemberCache')||'[]')}catch(_){}
- if(cached.length){MEMBER_ROWS=cached;renderMembers();document.querySelector('#kMembers').textContent=money(cached.length);setSync('資料庫：同步中…')}
+ if(cached.length){MEMBER_ROWS=cached;renderMembers();document.querySelector('#kMembers').textContent=money(cached.length)}
+ let settings={};try{settings=JSON.parse(localStorage.getItem('eightSettingsCache')||'{}')}catch(_){}
+ if(settings.businessStart)CONFIG.businessStart=settings.businessStart;if(settings.businessEnd)CONFIG.businessEnd=settings.businessEnd;
+ document.querySelector('#businessStart').value=CONFIG.businessStart;document.querySelector('#businessEnd').value=CONFIG.businessEnd;refreshBusinessDay();
  loadEvents();
+ const last=Number(localStorage.getItem('eightLastFullSync')||0),fresh=Date.now()-last<300000;
+ if(!force&&cached.length&&fresh){setSync('資料庫：已連線');return}
+ setSync(cached.length?'資料庫：背景同步中…':'資料庫：載入中…');
  try{
    const r=await api('eight.bootstrap');
-   if(r.settings){CONFIG.businessStart=r.settings.businessStart||CONFIG.businessStart;CONFIG.businessEnd=r.settings.businessEnd||CONFIG.businessEnd;document.querySelector('#businessStart').value=CONFIG.businessStart;document.querySelector('#businessEnd').value=CONFIG.businessEnd}
-   MEMBER_ROWS=r.members||[];try{localStorage.setItem('eightMemberCache',JSON.stringify(MEMBER_ROWS))}catch(_){}
+   if(r.settings){CONFIG.businessStart=r.settings.businessStart||CONFIG.businessStart;CONFIG.businessEnd=r.settings.businessEnd||CONFIG.businessEnd;localStorage.setItem('eightSettingsCache',JSON.stringify(r.settings));document.querySelector('#businessStart').value=CONFIG.businessStart;document.querySelector('#businessEnd').value=CONFIG.businessEnd}
+   MEMBER_ROWS=r.members||[];localStorage.setItem('eightMemberCache',JSON.stringify(MEMBER_ROWS));localStorage.setItem('eightLastFullSync',String(Date.now()));
    renderMembers();document.querySelector('#kMembers').textContent=money(r.summary?.memberCount);document.querySelector('#kNewMembers').textContent=money(r.summary?.monthNewMembers);refreshBusinessDay();setSync('資料庫：已連線')
- }catch(e){
-   console.error(e)
-   if(cached.length){MEMBER_ROWS=cached;renderMembers();document.querySelector('#kMembers').textContent=money(cached.length);setSync('資料庫：暫時無法連線（顯示上次資料）',true)}
-   else setSync('資料庫：連線失敗',true)
- }
+ }catch(e){console.error(e);setSync(cached.length?'資料庫：使用本機資料':'資料庫：連線失敗',true)}
 }
 function goPage(page){document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===page));const t=document.querySelector('#pageTitle');if(t&&pages[page])t.textContent=pages[page]}
 document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>{goPage(b.dataset.page);if(b.dataset.page==='events')loadEvents()}));
@@ -47,7 +49,7 @@ document.body.dataset.theme=localStorage.getItem('eightTheme')||'dark';
 document.querySelector('#businessStart').addEventListener('change',refreshBusinessDay);document.querySelector('#businessEnd').addEventListener('change',refreshBusinessDay);
 document.querySelector('#saveBusinessHours').addEventListener('click',async()=>{const state=document.querySelector('#businessSaveState');const start=document.querySelector('#businessStart').value,end=document.querySelector('#businessEnd').value;state.textContent='儲存中…';try{const r=await api('eight.settings.update',{settings:{businessStart:start,businessEnd:end}});CONFIG.businessStart=r.settings.businessStart;CONFIG.businessEnd=r.settings.businessEnd;localStorage.removeItem('eightBusinessStart');localStorage.removeItem('eightBusinessEnd');refreshBusinessDay();state.textContent='已同步到資料庫'}catch(err){state.textContent='儲存失敗：'+err.message}setTimeout(()=>state.textContent='',2200)});
 const now=new Date(),first=new Date(now.getFullYear(),now.getMonth(),1);document.querySelector('#rangeFrom').value=localISO(first);document.querySelector('#rangeTo').value=localISO(now);
-document.querySelector('#refreshBtn').addEventListener('click',boot);boot();
+document.querySelector('#refreshBtn').addEventListener('click',()=>boot(true));boot(false);
 document.querySelector('#addMemberBtn').addEventListener('click',()=>openMemberModal());
 document.querySelectorAll('[data-close-member]').forEach(x=>x.addEventListener('click',closeMemberModal));
 document.querySelector('#memberForm').addEventListener('submit',saveMember);
@@ -201,7 +203,6 @@ document.querySelector('#workspaceSettle').addEventListener('click',async()=>{
 });
 
 document.querySelector('#eventList').addEventListener('click',e=>{const b=e.target.closest('.delete-event');if(!b)return;if(!confirm('確定刪除此賽事？'))return;const id=b.dataset.id,old=[...(window.EIGHT_EVENTS||[])];window.EIGHT_EVENTS=old.filter(x=>x.eventId!==id);renderEvents(window.EIGHT_EVENTS);api('eight.events.delete',{eventId:id}).catch(err=>{window.EIGHT_EVENTS=old;renderEvents(old);alert('刪除失敗：'+err.message)})});
-loadEvents();
 
 window.addEventListener('offline',()=>{const el=document.querySelector('#dbStatus');if(el){el.textContent='資料庫：網路離線';el.className='bad'}});
-window.addEventListener('online',()=>{boot()});
+window.addEventListener('online',()=>{boot(false)});
