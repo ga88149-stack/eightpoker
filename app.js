@@ -85,12 +85,13 @@ function eventCalcPlayer(p,e){
 function showOnlyPage(id){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===id))}
 async function openEventWorkspace(id){
  WORKSPACE_EVENT=(window.EIGHT_EVENTS||[]).find(x=>x.eventId===id);if(!WORKSPACE_EVENT)return;
- ACTIVE_EVENT=id;showOnlyPage('eventWorkspace');document.querySelector('#workspaceTitle').textContent=WORKSPACE_EVENT.name;
+ ACTIVE_EVENT=id;try{WORKSPACE_PLAYERS=JSON.parse(localStorage.getItem('eightEventPlayers:'+id)||'[]')}catch(_){WORKSPACE_PLAYERS=[]}
+ showOnlyPage('eventWorkspace');document.querySelector('#workspaceTitle').textContent=WORKSPACE_EVENT.name;
  document.querySelector('#workspaceMeta').textContent=(WORKSPACE_EVENT.businessDate||'')+' · '+(WORKSPACE_EVENT.startTime||'')+' · '+(WORKSPACE_EVENT.level||'');
- document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';filterWorkspaceMembers('');
- await loadWorkspacePlayers();
+ document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';filterWorkspaceMembers('');renderWorkspace();
+ loadWorkspacePlayers();
 }
-async function loadWorkspacePlayers(){if(!ACTIVE_EVENT)return;try{const r=await api('eight.eventPlayers.list',{eventId:ACTIVE_EVENT});WORKSPACE_PLAYERS=r.players||[];renderWorkspace()}catch(err){alert('載入玩家失敗：'+err.message)}}
+async function loadWorkspacePlayers(){if(!ACTIVE_EVENT)return;const id=ACTIVE_EVENT;try{const r=await api('eight.eventPlayers.list',{eventId:id});if(ACTIVE_EVENT!==id)return;WORKSPACE_PLAYERS=r.players||[];try{localStorage.setItem('eightEventPlayers:'+id,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value)}catch(err){if(ACTIVE_EVENT===id&&!WORKSPACE_PLAYERS.length)alert('載入玩家失敗：'+err.message)}}
 function filterWorkspaceMembers(q){
  q=memberSearchText(q);const joined=new Set(WORKSPACE_PLAYERS.map(x=>x.memberKey));
  const list=MEMBER_ROWS.filter(m=>!joined.has(m.memberKey)&&(!q||[m.memberId,m.name,m.nickname,m.group].some(v=>memberSearchText(v).includes(q)))).slice(0,30);
@@ -130,16 +131,17 @@ async function addWorkspacePlayer(){
  }finally{btn.disabled=false}
 }
 document.querySelector('#eventList').addEventListener('click',e=>{const b=e.target.closest('.enter-event');if(b){openEventWorkspace(b.dataset.id)}});
-document.querySelector('#backToEvents').addEventListener('click',async()=>{for(const key of [...WS_PENDING_PATCH.keys()])await flushWorkspacePlayer(key);showOnlyPage('events');loadEvents()});
+document.querySelector('#backToEvents').addEventListener('click',()=>{const eventId=ACTIVE_EVENT,keys=[...WS_PENDING_PATCH.keys()];showOnlyPage('events');ACTIVE_EVENT=null;WORKSPACE_EVENT=null;Promise.allSettled(keys.map(key=>flushWorkspacePlayerForEvent(eventId,key))).then(()=>loadEvents());loadEvents()});
 document.querySelector('#workspaceRefresh').addEventListener('click',loadWorkspacePlayers);
 document.querySelector('#workspaceMemberSearch').addEventListener('input',e=>filterWorkspaceMembers(e.target.value));
 document.querySelector('#workspaceMemberSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addWorkspacePlayer()}});
 document.querySelector('#workspaceAddPlayer').addEventListener('click',addWorkspacePlayer);
-async function flushWorkspacePlayer(key){
- const patch=WS_PENDING_PATCH.get(key);if(!patch||!ACTIVE_EVENT)return;WS_PENDING_PATCH.delete(key);WS_SAVE_TIMERS.delete(key);
- try{const p=WORKSPACE_PLAYERS.find(x=>x.memberKey===key);if(p&&p.revision)patch.expectedRevision=p.revision;const r=await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch:patch});if(p&&r.player&&r.player.revision)p.revision=r.player.revision}
- catch(err){if(err.message==='STALE_WRITE')alert('資料已被其他裝置更新，已重新載入最新資料');else alert('更新失敗：'+err.message);await loadWorkspacePlayers()}
+async function flushWorkspacePlayerForEvent(eventId,key){
+ const patch=WS_PENDING_PATCH.get(key);if(!patch||!eventId)return;WS_PENDING_PATCH.delete(key);WS_SAVE_TIMERS.delete(key);
+ try{const p=WORKSPACE_PLAYERS.find(x=>x.memberKey===key);if(p&&p.revision)patch.expectedRevision=p.revision;const r=await api('eight.eventPlayers.update',{eventId:eventId,memberKey:key,patch:patch});if(p&&r.player&&r.player.revision)p.revision=r.player.revision}
+ catch(err){if(ACTIVE_EVENT===eventId){if(err.message==='STALE_WRITE')alert('資料已被其他裝置更新，已重新載入最新資料');else alert('更新失敗：'+err.message);await loadWorkspacePlayers()}else console.error('背景儲存失敗',err)}
 }
+async function flushWorkspacePlayer(key){return flushWorkspacePlayerForEvent(ACTIVE_EVENT,key)}
 function queueWorkspacePlayerSave(key,patch){
  WS_PENDING_PATCH.set(key,Object.assign({},WS_PENDING_PATCH.get(key)||{},patch));
  if(WS_SAVE_TIMERS.has(key))clearTimeout(WS_SAVE_TIMERS.get(key));
@@ -154,7 +156,7 @@ document.querySelector('#workspacePlayerRows').addEventListener('change',e=>{
  else if(e.target.classList.contains('ws-other')){p.otherDiscount=Number(e.target.value||0);patch.otherDiscount=p.otherDiscount}
  else if(e.target.classList.contains('ws-group')){p.group=e.target.value.trim();patch.group=p.group}
  else if(e.target.classList.contains('ws-chips')){p.chips=Number(e.target.value||0);patch.chips=p.chips}else return;
- renderWorkspace();queueWorkspacePlayerSave(key,patch)
+ renderWorkspace();try{localStorage.setItem('eightEventPlayers:'+ACTIVE_EVENT,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}queueWorkspacePlayerSave(key,patch)
 });
 document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];if(WS_SAVE_TIMERS.has(key))clearTimeout(WS_SAVE_TIMERS.get(key));WS_SAVE_TIMERS.delete(key);WS_PENDING_PATCH.delete(key);WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key}).then(()=>{loadEvents()}).catch(err=>{WORKSPACE_PLAYERS=old;renderWorkspace();alert('移除失敗：'+err.message)})});
 document.querySelector('#workspaceSettle').addEventListener('click',async()=>{
