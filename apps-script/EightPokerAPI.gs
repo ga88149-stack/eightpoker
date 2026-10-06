@@ -38,7 +38,7 @@ function eightEnsureSheet_(name,headers){
   sh.setFrozenRows(1);return sh;
 }
 function eightMeta_(){return eightEnsureSheet_(EIGHT_META_SHEET,['MEMBER_KEY','POKER_FANS_ID','姓名快照','綽號','分帳群組','會員狀態','建立時間','更新時間'])}
-function eightEvents_(){return eightEnsureSheet_(EIGHT_EVENT_SHEET,['EVENT_ID','營業日','賽事名稱','開始時間','登記截止','級別','買入金額','行政費','JP提撥率','狀態','建立時間','更新時間'])}
+function eightEvents_(){return eightEnsureSheet_(EIGHT_EVENT_SHEET,['EVENT_ID','營業日','賽事名稱','開始時間','登記截止','級別','買入金額','行政費','JP提撥率','狀態','建立時間','更新時間','首次買入總額','首次買入行政費','重買總額','重買行政費','免行政費起始組數','ICM提撥率','ICM取整單位'])}
 function eightPlayers_(){return eightEnsureSheet_(EIGHT_PLAYER_SHEET,['EVENT_ID','MEMBER_KEY','POKER_FANS_ID','姓名快照','買入組數','優惠金額','分帳群組','籌碼','狀態','建立時間','更新時間'])}
 function eightSettings_(){
   const sh=eightDb_().getSheetByName(EIGHT_SETTINGS_SHEET),out={businessStart:'16:00',businessEnd:'07:00'};
@@ -99,14 +99,14 @@ function eightDeleteMember_(key){
   const lock=LockService.getScriptLock();lock.waitLock(10000);try{const f=eightFindMember_(key),s=eightMemberSource_(),rows=eightFindSourceRowsById_(s,f.id);if(rows.length!==1)throw new Error(rows.length?'MEMBER_SOURCE_DUPLICATE_ID':'MEMBER_NOT_FOUND');s.sh.deleteRow(rows[0]);eightMeta_().deleteRow(f.metaRow);return {deleted:true}}finally{lock.releaseLock()}
 }
 function eightListEvents_(businessDate){
-  const sh=eightEvents_();if(sh.getLastRow()<2)return [];const v=sh.getRange(2,1,sh.getLastRow()-1,12).getDisplayValues();
-  return v.filter(r=>r[0]&&(!businessDate||r[1]===businessDate)&&r[9]!=='deleted').map(r=>({eventId:r[0],businessDate:r[1],name:r[2],startTime:r[3],regClose:r[4],level:r[5],buyin:Number(r[6]||0),fee:Number(r[7]||0),jpRate:Number(r[8]||0),status:r[9]||'open'}))
+  const sh=eightEvents_();if(sh.getLastRow()<2)return [];const v=sh.getRange(2,1,sh.getLastRow()-1,19).getDisplayValues();
+  return v.filter(r=>r[0]&&(!businessDate||r[1]===businessDate)&&r[9]!=='deleted').map(r=>({eventId:r[0],businessDate:r[1],name:r[2],startTime:r[3],regClose:r[4],level:r[5],buyin:Number(r[6]||0),fee:Number(r[7]||0),jpRate:Number(r[8]||0),status:r[9]||'open',buyinTotal:Number(r[12]||Number(r[6]||0)+Number(r[7]||0)),buyinAdmin:Number(r[13]||r[7]||0),rebuyTotal:Number(r[14]||Number(r[6]||0)+Number(r[7]||0)),rebuyAdmin:Number(r[15]||r[7]||0),freeAdminFrom:Number(r[16]||11),icmRate:Number(r[17]||3),icmRound:Number(r[18]||100)}))
 }
 function eightCreateEvent_(e){
-  const lock=LockService.getScriptLock();lock.waitLock(10000);try{if(!String(e.name||'').trim())throw new Error('EVENT_NAME_REQUIRED');if(!/^\d{4}-\d{2}-\d{2}$/.test(String(e.businessDate||'')))throw new Error('EVENT_DATE_REQUIRED');const id='E-'+Utilities.getUuid(),now=new Date();eightEvents_().appendRow([id,e.businessDate,String(e.name).trim(),e.startTime||'',e.regClose||'',e.level||'custom',Number(e.buyin||0),Number(e.fee||0),Number(e.jpRate||0),'open',now,now]);return {eventId:id,...e,status:'open'}}finally{lock.releaseLock()}
+  const lock=LockService.getScriptLock();lock.waitLock(10000);try{if(!String(e.name||'').trim())throw new Error('EVENT_NAME_REQUIRED');if(!/^\d{4}-\d{2}-\d{2}$/.test(String(e.businessDate||'')))throw new Error('EVENT_DATE_REQUIRED');const id='E-'+Utilities.getUuid(),now=new Date();eightEvents_().appendRow([id,e.businessDate,String(e.name).trim(),e.startTime||'',e.regClose||'',e.level||'custom',Number(e.buyin||0),Number(e.fee||0),Number(e.jpRate||0),'open',now,now,Number(e.buyinTotal||0),Number(e.buyinAdmin||0),Number(e.rebuyTotal||0),Number(e.rebuyAdmin||0),Number(e.freeAdminFrom||11),Number(e.icmRate||3),Number(e.icmRound||100)]);return {eventId:id,...e,status:'open'}}finally{lock.releaseLock()}
 }
 function eightFindEventRow_(id){const sh=eightEvents_(),v=sh.getDataRange().getDisplayValues();for(let i=1;i<v.length;i++)if(v[i][0]===id)return {sh,row:i+1,data:v[i]};throw new Error('EVENT_NOT_FOUND')}
-function eightUpdateEvent_(id,p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{const f=eightFindEventRow_(id),map={businessDate:2,name:3,startTime:4,regClose:5,level:6,buyin:7,fee:8,jpRate:9,status:10};Object.keys(map).forEach(k=>{if(k in p)f.sh.getRange(f.row,map[k]).setValue(p[k])});f.sh.getRange(f.row,12).setValue(new Date());return {eventId:id}}finally{lock.releaseLock()}}
+function eightUpdateEvent_(id,p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{const f=eightFindEventRow_(id),map={businessDate:2,name:3,startTime:4,regClose:5,level:6,buyin:7,fee:8,jpRate:9,status:10,buyinTotal:13,buyinAdmin:14,rebuyTotal:15,rebuyAdmin:16,freeAdminFrom:17,icmRate:18,icmRound:19};Object.keys(map).forEach(k=>{if(k in p)f.sh.getRange(f.row,map[k]).setValue(p[k])});f.sh.getRange(f.row,12).setValue(new Date());return {eventId:id}}finally{lock.releaseLock()}}
 function eightDeleteEvent_(id){const lock=LockService.getScriptLock();lock.waitLock(10000);try{const f=eightFindEventRow_(id);f.sh.getRange(f.row,10).setValue('deleted');f.sh.getRange(f.row,12).setValue(new Date());return {deleted:true}}finally{lock.releaseLock()}}
 function eightListEventPlayers_(eventId){
   if(!eventId)return [];const sh=eightPlayers_();if(sh.getLastRow()<2)return [];return sh.getRange(2,1,sh.getLastRow()-1,11).getDisplayValues().filter(r=>r[0]===eventId&&r[8]!=='deleted').map(r=>({eventId:r[0],memberKey:r[1],memberId:r[2],name:r[3],entries:Number(r[4]||1),discount:Number(r[5]||0),group:r[6]||'',chips:Number(r[7]||0),status:r[8]||'active'}))
