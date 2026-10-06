@@ -27,14 +27,14 @@ async function saveMember(e){e.preventDefault();const btn=document.querySelector
 async function boot(){
  refreshBusinessDay();if(!CONFIG.apiUrl){setSync('資料庫：等待 Apps Script 部署');return}
  try{
-   setSync('資料庫：檢查連線…');await api('eight.ping');setSync('資料庫：已連線，載入會員…');
+   setSync('資料庫：載入中…');
    const r=await api('eight.bootstrap');
    if(r.settings){CONFIG.businessStart=r.settings.businessStart||CONFIG.businessStart;CONFIG.businessEnd=r.settings.businessEnd||CONFIG.businessEnd;document.querySelector('#businessStart').value=CONFIG.businessStart;document.querySelector('#businessEnd').value=CONFIG.businessEnd}
    MEMBER_ROWS=r.members||[];try{localStorage.setItem('eightMemberCache',JSON.stringify(MEMBER_ROWS))}catch(_){}
    renderMembers();document.querySelector('#kMembers').textContent=money(r.summary?.memberCount);document.querySelector('#kNewMembers').textContent=money(r.summary?.monthNewMembers);refreshBusinessDay();setSync('資料庫：已連線')
  }catch(e){
    console.error(e);let cached=[];try{cached=JSON.parse(localStorage.getItem('eightMemberCache')||'[]')}catch(_){}
-   if(cached.length){MEMBER_ROWS=cached;renderMembers();document.querySelector('#kMembers').textContent=money(cached.length);setSync('資料庫：連線失敗（顯示上次資料）',true)}
+   if(cached.length){MEMBER_ROWS=cached;renderMembers();document.querySelector('#kMembers').textContent=money(cached.length);setSync('資料庫：暫時無法連線（顯示上次資料）',true)}
    else setSync('資料庫：連線失敗',true)
  }
 }
