@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>EIGHT POKER MANAGEMENT V2.0.1</title>
+<title>EIGHT POKER MANAGEMENT V2.0.2</title>
 <style>
 :root{--bg:#0b0f14;--card:#121922;--card2:#17212c;--text:#eef3f8;--muted:#91a0b2;--line:#263443;--accent:#d6b35a;--good:#49c27d;--bad:#ff6b6b}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif}
@@ -1819,7 +1819,7 @@ main{margin-left:0!important;width:auto!important;max-width:none!important;paddi
  }catch(_){document.documentElement.setAttribute('data-epc-theme','dark')}
 })();
 </script><body><script>window.EPC_RECOVERY_READONLY=false;</script>
-<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V2.0.1</span></div></header>
+<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V2.0.2</span></div></header>
 <nav id="nav">
 <button data-page="dashboard" class="active">總覽</button>
 <button data-page="members">會員</button>
@@ -2507,14 +2507,35 @@ function setCloudState(text,isError=false){
  const el=$('saveState'); if(!el)return;
  el.textContent=text; el.style.color=isError?'#ff8a8a':'';
 }
+function memberHistory_(member){
+ if(!member||typeof member!=='object')return [];
+ const raw=member.history;
+ if(Array.isArray(raw))return raw.filter(x=>x&&typeof x==='object'&&!Array.isArray(x));
+ let parsed=raw;
+ if(typeof parsed==='string'){
+   try{parsed=JSON.parse(parsed);}catch(_){parsed=null;}
+ }
+ let rows=[];
+ if(Array.isArray(parsed))rows=parsed;
+ else if(parsed&&typeof parsed==='object'){
+   rows=parsed.eventId!=null?[parsed]:Object.values(parsed);
+ }
+ rows=rows.filter(x=>x&&typeof x==='object'&&!Array.isArray(x)&&x.eventId!=null);
+ // Keep the original legacy value when adapting a non-array history in memory.
+ if(raw!=null&&raw!==''&&!Object.prototype.hasOwnProperty.call(member,'_legacyHistory'))member._legacyHistory=raw;
+ member.history=rows;
+ return rows;
+}
 function mergeFormMembers(baseMembers,formMembers){
  const base=Array.isArray(baseMembers)?baseMembers:[];
  const forms=Array.isArray(formMembers)?formMembers:[];
- const map=new Map(base.map(m=>[String(m.id||''),m]));
+ const map=new Map(base.filter(m=>m&&typeof m==='object').map(m=>{memberHistory_(m);return [String(m.id||''),m];}));
  forms.forEach(f=>{
+   if(!f||typeof f!=='object')return;
+   memberHistory_(f);
    const id=String(f.id||'').trim(); if(!id)return;
    const old=map.get(id)||{};
-   map.set(id,{...old,...f,group:old.group||f.group||'',note:old.note||f.note||'',history:Array.isArray(old.history)?old.history:(f.history||[]),createdAt:old.createdAt||f.createdAt||null,createdDate:f.createdDate||old.createdDate||'',source:'Form Responses 1'});
+   map.set(id,{...old,...f,group:old.group||f.group||'',note:old.note||f.note||'',history:Array.isArray(old.history)?memberHistory_(old):memberHistory_(f),createdAt:old.createdAt||f.createdAt||null,createdDate:f.createdDate||old.createdDate||'',source:'Form Responses 1'});
  });
  return [...map.values()];
 }
@@ -3212,13 +3233,14 @@ function cleanupOrphanMemberHistory(){
  const validEventIds=new Set((db.events||[]).map(e=>String(e.id)));
  let changed=false;
  (db.members||[]).forEach(m=>{
-   const before=(m.history||[]).length;
-   m.history=(m.history||[]).filter(h=>h && h.eventId!=null && validEventIds.has(String(h.eventId)));
+   const before=memberHistory_(m).length;
+   m.history=memberHistory_(m).filter(h=>h && h.eventId!=null && validEventIds.has(String(h.eventId)));
    if(m.history.length!==before)changed=true;
  });
  if(changed)localStorage.setItem('epcV1',JSON.stringify(db));
 }
-cleanupOrphanMemberHistory();
+// Cleanup is only performed by explicit event deletion, never during startup.
+// Cached events may be incomplete before cloud loading has finished.
 
 
 function hmMinutes(v,fallback){
@@ -4008,7 +4030,7 @@ async function performDeleteEventByIndex(index){
  // 賽事是分帳報表的唯一來源。刪除賽事時，同步移除所有會員歷史，
  // 分帳報表與 EPC 帳務會立即依現存賽事重算，不保留孤兒結算資料。
  (db.members||[]).forEach(m=>{
-   m.history=(m.history||[]).filter(h=>String(h.eventId)!==String(id));
+   m.history=memberHistory_(m).filter(h=>String(h.eventId)!==String(id));
  });
  db.events.splice(index,1);
  cleanupOrphanMemberHistory();
@@ -4657,11 +4679,11 @@ async function executeFormalSettlement(){
  
  let v=validateSettlement();
  if(!v.ok){closeSettlementConfirm();actionMsg(v.msg,true);return;}
- db.members.forEach(m=>m.history=(m.history||[]).filter(h=>h.eventId!==e.id));
+ db.members.forEach(m=>m.history=memberHistory_(m).filter(h=>h.eventId!==e.id));
  e.players.forEach(p=>{
    let m=db.members.find(x=>x.id===p.memberId);if(!m)return;
    let c=calcPlayerForEvent(p,e);
-   m.history=m.history||[];
+   m.history=memberHistory_(m);
    m.history.push({eventId:e.id,date:e.date,eventSeq:e.seq,level:e.level,groups:c.groups,paid:c.paid,prize:+p.prize||0,net:(+p.prize||0)-c.paid,group:p.group||m.name});
  });
  let acc=accountingInfo(e);
@@ -4684,7 +4706,7 @@ async function unlockSettledEvent(id){
  const label=`${businessDateForEvent(e)} ${eventDisplayName_(e)} ${Number(e.level||0).toLocaleString()} 賽事`;
  if(!confirm(`確定要解鎖「${label}」嗎？\n\n解鎖後可修改買入、優惠、籌碼、獎金與帳務。\n原本的會員結算紀錄會先移除，修改完成後請重新「正式結算」。`))return;
  (db.members||[]).forEach(m=>{
-   m.history=(m.history||[]).filter(h=>String(h.eventId)!==String(e.id));
+   m.history=memberHistory_(m).filter(h=>String(h.eventId)!==String(e.id));
  });
  e.status='進行中';
  delete e.finalJP;
@@ -4807,7 +4829,7 @@ function calcPlayerForEvent(p,e){
 }
 
 function memberHistoryInRange(m,from,to){
- const h=Array.isArray(m&&m.history)?m.history:[];
+ const h=memberHistory_(m);
  return h.filter(x=>{const d=String(x.date||'');return d&&(!from||d>=from)&&(!to||d<=to);});
 }
 function renderMemberRows(){
@@ -6447,3 +6469,4 @@ async function epcShowRecoveryAudit_(){
  }catch(e){alert("唯讀盤點失敗："+String(e&&e.message||e));}
 }
 </script></body></html>
+
