@@ -82,7 +82,7 @@ async function loadEventPlayers(){if(!ACTIVE_EVENT)return;try{const r=await api(
 function renderEventPlayers(){const el=document.querySelector('#eventPlayerList');document.querySelector('#eventPlayerCount').textContent=EVENT_PLAYERS.length+' 人';if(!EVENT_PLAYERS.length){el.className='empty';el.innerHTML='尚未加入玩家';return}el.className='player-list';el.innerHTML=EVENT_PLAYERS.map(p=>'<div class="player-row player-row-wide"><div><b>'+esc(p.name||'')+'</b><small>'+esc(p.memberId||'')+'</small></div><div class="player-fields"><label>組數<input class="entry-count" data-key="'+esc(p.memberKey)+'" type="number" min="1" value="'+esc(p.entries||1)+'"></label><label>早鳥<input class="early-discount" data-key="'+esc(p.memberKey)+'" type="number" min="0" value="'+esc(p.earlyDiscount||0)+'"></label><label>晚鳥<input class="late-discount" data-key="'+esc(p.memberKey)+'" type="number" min="0" value="'+esc(p.lateDiscount||0)+'"></label><label>重買優惠<input class="rebuy-discount" data-key="'+esc(p.memberKey)+'" type="number" min="0" value="'+esc(p.rebuyDiscount||0)+'"></label><label>組數優惠<input class="entry-discount" data-key="'+esc(p.memberKey)+'" type="number" min="0" value="'+esc(p.entryDiscount||0)+'"></label><label>其他優惠<input class="other-discount" data-key="'+esc(p.memberKey)+'" type="number" min="0" value="'+esc(p.otherDiscount||0)+'"></label><label>分帳群組<input class="settlement-group" data-key="'+esc(p.memberKey)+'" value="'+esc(p.group||'')+'"></label><label>籌碼<input class="chip-count" data-key="'+esc(p.memberKey)+'" type="number" min="0" value="'+esc(p.chips||0)+'"></label><button class="danger remove-player" data-key="'+esc(p.memberKey)+'">移除</button></div></div>').join('')}
 document.querySelectorAll('[data-close-players]').forEach(x=>x.addEventListener('click',closePlayersModal));
 
-let WORKSPACE_EVENT=null,WORKSPACE_PLAYERS=[];
+let WORKSPACE_EVENT=null,WORKSPACE_PLAYERS=[],WS_SAVE_TIMERS=new Map(),WS_PENDING_PATCH=new Map(),WS_PLAYER_SYNC=new Map();
 function eventCalcPlayer(p,e){
  const buyin=Math.max(0,Number(p.buyin??1)),rebuy=Math.max(0,Number(p.rebuy??0)),groups=buyin+rebuy;
  const gross=buyin*Number(e.buyinTotal||0)+rebuy*Number(e.rebuyTotal||0);
@@ -117,7 +117,7 @@ function renderWorkspace(){
  '<td><input class="ws-early" type="number" min="0" value="'+c.early+'"></td><td><input class="ws-late" type="number" min="0" value="'+c.late+'"></td><td class="ws-auto">'+money(c.rd)+'</td>'+
  '<td class="ws-auto">'+money(c.overbuy)+'</td><td><input class="ws-other" type="number" min="0" value="'+c.other+'"></td><td class="ws-paid">'+money(c.paid)+'</td>'+
  '<td><input class="ws-chips" type="number" min="0" value="'+Number(p.chips||0)+'"></td><td><button class="danger ws-remove">移除</button></td><td><input class="ws-group" value="'+esc(p.group||'')+'"></td></tr>'}).join('');
- document.querySelector('#workspacePlayerTotals').innerHTML='<tr><td colspan="2">合計</td><td>'+totals.buyin+'</td><td>'+totals.rebuy+'</td><td>'+totals.groups+'</td><td>'+money(totals.early)+'</td><td>'+money(totals.late)+'</td><td>'+money(totals.rd)+'</td><td>'+money(totals.groupDiscount)+'</td><td>'+money(totals.other)+'</td><td>'+money(totals.paid)+'</td><td colspan="3"></td></tr>';
+ document.querySelector('#workspacePlayerTotals').innerHTML='<tr><td colspan="2">合計</td><td>'+totals.buyin+'</td><td>'+totals.rebuy+'</td><td>'+totals.groups+'</td><td>'+money(totals.early)+'</td><td>'+money(totals.late)+'</td><td>'+money(totals.rd)+'</td><td>'+money(totals.overbuy)+'</td><td>'+money(totals.other)+'</td><td>'+money(totals.paid)+'</td><td colspan="3"></td></tr>';
  const adminGross=totals.buyin*Number(e.buyinAdmin||0)+totals.rebuy*Number(e.rebuyAdmin||0),discounts=totals.early+totals.late+totals.rd+totals.overbuy+totals.other;
  const prizeBase=totals.buyin*Math.max(0,Number(e.buyinTotal||0)-Number(e.buyinAdmin||0))+totals.rebuy*Math.max(0,Number(e.rebuyTotal||0)-Number(e.rebuyAdmin||0));
  const jp=Math.floor(adminGross*Number(e.jpRate||0)/100),unit=Math.max(1,Number(e.icmRound||100)),prize=Math.floor((prizeBase*(1-Number(e.icmRate||0)/100))/unit)*unit;
@@ -132,10 +132,11 @@ async function addWorkspacePlayer(){
  WORKSPACE_PLAYERS.push(optimistic);renderWorkspace();filterWorkspaceMembers('');try{localStorage.setItem('eightEventPlayers:'+ACTIVE_EVENT,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}
  document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';btn.disabled=true;
  try{
-   await api('eight.eventPlayers.add',{eventId:ACTIVE_EVENT,memberKey:key});
-   if(group)api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch:{group}}).catch(console.error);
-   btn.disabled=false;
-   loadWorkspacePlayers();loadEvents();
+   const eventId=ACTIVE_EVENT,r=await api('eight.eventPlayers.add',{eventId:ACTIVE_EVENT,memberKey:key});
+   const p=WORKSPACE_PLAYERS.find(x=>x.memberKey===key);if(p&&r.player&&r.player.revision)p.revision=r.player.revision;
+   if(group)queueWorkspacePlayerSave(key,{group});
+   WS_PLAYER_SYNC.set(eventId,Date.now());btn.disabled=false;
+   try{localStorage.setItem('eightEventPlayers:'+eventId,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){};
  }catch(err){
    btn.disabled=false;
    const eventId=ACTIVE_EVENT;
