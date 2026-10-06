@@ -2469,6 +2469,15 @@ const uid=()=>String(Date.now()).slice(-8)+Math.floor(Math.random()*90+10);
 const CLOUD_API='https://script.google.com/macros/s/AKfycbwj-jLaSTiljcw15_UnhUFv4QxVq5HbNyers3ybU-6IAkwSj_A5X36x-852Xu5MxobS/exec';
 const STACK_API='https://script.google.com/macros/s/AKfycbwJgutjAat9guTMsUgLYymwP0CbOUKpVzWyg5bKe65xa51ysBJas2QMbkjB5B2wpDeJVQ/exec';
 let db=JSON.parse(localStorage.getItem('epcV1')||'null')||{members:[],jpBalance:0,events:[],currentEventId:null};
+// Normalize the minimum schema BEFORE the first render. A fresh/empty browser cache
+// previously crashed at db.settings.businessStart, so initializeCloud() never ran.
+if(!db.settings||typeof db.settings!=='object')db.settings={};
+if(!db.settings.businessStart)db.settings.businessStart='16:00';
+if(!db.settings.businessEnd)db.settings.businessEnd='07:00';
+if(!Array.isArray(db.members))db.members=[];
+if(!Array.isArray(db.events))db.events=[];
+if(!Array.isArray(db.dailyAccounting))db.dailyAccounting=[];
+if(!Array.isArray(db.dailySettlementReports))db.dailySettlementReports=[];
 let cloudRevision=Number(localStorage.getItem('epcCloudRevision')||0);
 let cloudReady=false,cloudSaving=false,cloudSaveTimer=null,cloudPending=false;
 let localDirty=localStorage.getItem('epcLocalDirty')==='1';
