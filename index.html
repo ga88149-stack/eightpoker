@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>EIGHT POKER MANAGEMENT V2.0.2</title>
+<title>EIGHT POKER MANAGEMENT V2.0.3</title>
 <style>
 :root{--bg:#0b0f14;--card:#121922;--card2:#17212c;--text:#eef3f8;--muted:#91a0b2;--line:#263443;--accent:#d6b35a;--good:#49c27d;--bad:#ff6b6b}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif}
@@ -1819,7 +1819,7 @@ main{margin-left:0!important;width:auto!important;max-width:none!important;paddi
  }catch(_){document.documentElement.setAttribute('data-epc-theme','dark')}
 })();
 </script><body><script>window.EPC_RECOVERY_READONLY=false;</script>
-<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V2.0.2</span></div></header>
+<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V2.0.3</span></div></header>
 <nav id="nav">
 <button data-page="dashboard" class="active">總覽</button>
 <button data-page="members">會員</button>
@@ -2539,11 +2539,26 @@ function mergeFormMembers(baseMembers,formMembers){
  });
  return [...map.values()];
 }
+function memberDeletionMap_(...sources){
+ const map=new Map();
+ for(const source of sources){
+   const records=source&&source.memberDeletions;
+   if(!records||typeof records!=='object'||Array.isArray(records))continue;
+   for(const [id,record] of Object.entries(records)){
+     if(!record||typeof record!=='object'||!(Number(record.deletedAt)>0))continue;
+     const key=String(id).trim(),old=map.get(key);
+     if(key&&(!old||Number(record.deletedAt)>Number(old.deletedAt)))map.set(key,record);
+   }
+ }
+ return Object.fromEntries(map);
+}
 function preserveMembers_(local,merged,formMembers){
  if(!merged||typeof merged!=='object')merged={};
+ const deletions=memberDeletionMap_(local,merged);
  let members=mergeFormMembers((merged&&merged.members)||[],formMembers||[]);
  members=mergeFormMembers(members,(local&&local.members)||[]);
- merged.members=members;
+ merged.memberDeletions=deletions;
+ merged.members=members.filter(m=>!Object.prototype.hasOwnProperty.call(deletions,String(m.id||'').trim()));
  return merged;
 }
 function makeWriteId(){
@@ -2930,14 +2945,14 @@ async function eightReloadMembers_(){
  eightMemberStatus_('正在從 Google Sheet 讀取會員…');
  try{
    // This read must not mark an uninitialized full database ready for writes.
-   const response=await fetchWithTimeout_(CLOUD_API+'?action=members&_='+Date.now(),{cache:'no-store',redirect:'follow'});
+   const response=await fetchWithTimeout_(CLOUD_API+'?action=load&_='+Date.now(),{cache:'no-store',redirect:'follow'});
    if(!response.ok)throw new Error('HTTP '+response.status);
    const result=await response.json();
    if(!result.ok||!Array.isArray(result.members))throw new Error(result.error||'會員 API 回傳格式不正確');
    const members=result.members.filter(m=>m&&String(m.id||'').trim());
    if(result.members.length&&!members.length)throw new Error('會員資料缺少會員編號');
-   if(!members.length){eightMemberStatus_('Google Sheet 回傳 0 筆會員；目前保留畫面原有資料。',true);return;}
-   db.members=mergeFormMembers(db.members,members);
+   db.memberDeletions=memberDeletionMap_(db,result.data);
+   db=preserveMembers_(db,db,members);
    epcLastPersistSnapshot_=cloneCloud_(db);
    eightRenderMembers_();
    try{localStorage.setItem('epcV1',JSON.stringify(db));}catch(err){setCloudState('會員已載入，但此瀏覽器無法保存快取：'+err.message,true);}
@@ -2989,7 +3004,8 @@ async function initializeCloud(){
 async function refreshFormMembers(saveAfter=true){
  if(epcEditLocked_())return false;
  try{
-   const res=await cloudGet('members');
+   const res=await cloudGet('load');
+   db.memberDeletions=memberDeletionMap_(db,res.data);
    const before=JSON.stringify((db.members||[]).map(m=>[m.id,m.name,m.group,m.note,m.createdDate]));
    db=preserveMembers_(db,db,res.members);
    localStorage.setItem('epcV1',JSON.stringify(db));
@@ -3043,12 +3059,13 @@ async function saveCloudNow(force=false){
    const remoteRevision=Number(latest.revision||0);
    const base=cloudBase&&typeof cloudBase==='object'?cloneCloud_(cloudBase):cloneCloud_(remote);
    const localAtStart=cloneCloud_(db);
-   if((!localAtStart.members||!localAtStart.members.length) && Array.isArray(remote.members) && remote.members.length){
+   if((!localAtStart.members||!localAtStart.members.length) && Array.isArray(remote.members) && remote.members.some(m=>!Object.prototype.hasOwnProperty.call(memberDeletionMap_(localAtStart,remote),String(m.id||'').trim()))){
      throw new Error('EMPTY_LOCAL_WRITE_BLOCKED');
    }
 
    let candidate=mergeCloud3_(base,localAtStart,remote);
    candidate=preserveManualDiscountEdits_(localAtStart,candidate);
+   candidate.memberDeletions=memberDeletionMap_(base,localAtStart,remote,candidate);
    candidate=preserveMembers_(localAtStart,candidate,latest.members);
 
    setCloudState('● 正在儲存合併後資料…');
@@ -3601,6 +3618,7 @@ async function addMember(){
  if(editingMemberId)return saveMemberEdit();
  const name=$('mName').value.trim(); if(!name)return alert('請輸入會員名稱');
  const id=String($('mId').value.trim()||uid());
+ if(Object.prototype.hasOwnProperty.call(memberDeletionMap_(db),id))return alert('此會員編號已有刪除紀錄，請使用新的會員編號，避免舊資料重新出現。');
  if((db.members||[]).some(m=>String(m.id||'').trim()===id))return alert('此會員 ID 已存在，請確認後再新增。');
  const group=$('mGroup').value.trim(), note=$('mNote').value.trim();
  const btn=$('memberSaveBtn'); if(btn){btn.disabled=true;btn.textContent='新增中…';}
@@ -3640,26 +3658,47 @@ function delMember(id){
  const label=m?.name||m?.id||'此會員';
  askDeleteConfirm(`確定要刪除會員「${label}」嗎？\n若此會員來自會員資料表，也會同步從 Form Responses 1 刪除。`,()=>performDelMember(id));
 }
+let eightMemberDeleteBusy_=false;
 async function performDelMember(id){
- const sid=String(id);
- const used=(db.events||[]).some(e=>(e.players||[]).some(p=>String(p.memberId)===sid));
+ const sid=String(id).trim();
+ if(eightMemberDeleteBusy_)return;
+ if(!cloudReady||!cloudBase||eightCloudLoadBusy_||eightMemberLoadBusy_)return alert('請先完成雲端資料載入，再刪除會員。');
+ if(cloudSaving)return alert('目前正在儲存資料，請同步完成後再刪除會員。');
+ const m=(db.members||[]).find(x=>String(x.id).trim()===sid);
+ if(!m)return;
+ const used=(db.events||[]).some(e=>(e.players||[]).some(p=>String(p.memberId).trim()===sid))||memberHistory_(m).length>0;
  if(used)return alert('此會員已有賽事紀錄，不能直接刪除，以免破壞歷史帳務。');
- const m=(db.members||[]).find(x=>String(x.id)===sid);
+ eightMemberDeleteBusy_=true;
+ let deletionPending=false;
  try{
-   if(cloudReady && m && String(m.source||'').includes('Form Responses')){
-     setCloudState('● 正在刪除會員…');
-     await cloudPost({action:'deleteMember',memberId:sid});
-   }
-   db.members=(db.members||[]).filter(x=>String(x.id)!==sid);
+   setCloudState('● 正在刪除會員並確認雲端結果…');
+   // IDs identify the same member regardless of the cached source label.
+   await cloudPost({action:'deleteMember',memberId:sid});
+   db.memberDeletions=memberDeletionMap_(db);
+   db.memberDeletions[sid]={deletedAt:Date.now()};
+   db=preserveMembers_(db,db,[]);
+   deletionPending=true;
    persist();
-   renderMemberRows();
-   actionMsg('會員已刪除');
-   if(cloudReady)await saveCloudNow();
+   clearTimeout(cloudSaveTimer);
+   eightRenderMembers_();
+   const saved=await saveCloudNow();
+   if(!saved)throw new Error('刪除紀錄尚未完成雲端同步，請保持頁面開啟並等待重試');
+   const verified=await cloudGet('load');
+   const deletions=memberDeletionMap_(verified.data);
+   if(!Object.prototype.hasOwnProperty.call(deletions,sid))throw new Error('雲端尚未確認刪除紀錄');
+   db.memberDeletions=memberDeletionMap_(db,verified.data);
+   db=preserveMembers_(db,db,verified.members);
+   localStorage.setItem('epcV1',JSON.stringify(db));
+   epcLastPersistSnapshot_=cloneCloud_(db);
+   eightRenderMembers_();
+   eightMemberStatus_('會員已載入 '+db.members.length+' 人');
+   actionMsg('會員已刪除，雲端確認完成');
  }catch(err){
    console.error('delete member failed',err);
-   alert('會員刪除失敗：'+String(err.message||err));
-   setCloudState('● 刪除會員失敗',true);
- }
+   const message=(deletionPending?'會員刪除待確認：':'會員刪除失敗：')+String(err.message||err);
+   actionMsg(message,true);
+   setCloudState(message,true);
+ }finally{eightMemberDeleteBusy_=false;}
 }
 let editingMemberId=null;
 function editMember(id){
@@ -6469,4 +6508,5 @@ async function epcShowRecoveryAudit_(){
  }catch(e){alert("唯讀盤點失敗："+String(e&&e.message||e));}
 }
 </script></body></html>
+
 
