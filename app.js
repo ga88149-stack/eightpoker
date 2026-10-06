@@ -4,7 +4,17 @@ const pages={dashboard:'總覽',members:'會員資料',events:'賽事管理',set
 const pad=n=>String(n).padStart(2,'0'),money=n=>new Intl.NumberFormat('zh-TW').format(Number(n||0));
 function localISO(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
 function businessDate(now=new Date(),start=CONFIG.businessStart,end=CONFIG.businessEnd){const [sh,sm]=start.split(':').map(Number),[eh,em]=end.split(':').map(Number),mins=now.getHours()*60+now.getMinutes(),s=sh*60+sm,e=eh*60+em,d=new Date(now);if(e<s&&mins<e)d.setDate(d.getDate()-1);return localISO(d)}
-async function api(action,payload={}){if(!CONFIG.apiUrl)throw new Error('API_NOT_CONFIGURED');const r=await fetch(CONFIG.apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});const j=await r.json();if(!j.ok)throw new Error(j.error||'API_ERROR');return j}
+async function api(action,payload={}){
+  if(!CONFIG.apiUrl)throw new Error('尚未設定 API URL');
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),12000);
+  try{
+    const res=await fetch(CONFIG.apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload}),signal:ctrl.signal});
+    const raw=await res.text();let data;
+    try{data=JSON.parse(raw)}catch(_){throw new Error('後端連線失敗（HTTP '+res.status+'）')}
+    if(!data.ok)throw new Error(data.error||'API error');return data
+  }catch(err){if(err&&err.name==='AbortError')throw new Error('後端逾時，請重試');throw err}
+  finally{clearTimeout(timer)}
+}
 function setSync(t,bad=false){const e=document.querySelector('#syncState');e.textContent=t;e.style.color=bad?'var(--bad)':''}
 function refreshBusinessDay(){CONFIG.businessStart=document.querySelector('#businessStart')?.value||CONFIG.businessStart;CONFIG.businessEnd=document.querySelector('#businessEnd')?.value||CONFIG.businessEnd;const d=businessDate();document.querySelector('#businessDayLabel').textContent='營業時間：每日 '+CONFIG.businessStart+'–翌日 '+CONFIG.businessEnd;document.querySelector('#todayDate').textContent=d;document.querySelector('#globalDate').value=d}
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -82,7 +92,7 @@ function renderWorkspace(){
  '<td><input class="ws-buyin" type="number" min="0" value="'+c.buyin+'"></td><td><input class="ws-rebuy" type="number" min="0" value="'+c.rebuy+'"></td><td class="ws-groups">'+c.groups+'</td>'+
  '<td><input class="ws-early" type="number" min="0" value="'+c.early+'"></td><td><input class="ws-late" type="number" min="0" value="'+c.late+'"></td><td class="ws-auto">'+money(c.rd)+'</td>'+
  '<td class="ws-auto">'+money(c.overbuy)+'</td><td><input class="ws-other" type="number" min="0" value="'+c.other+'"></td><td class="ws-paid">'+money(c.paid)+'</td>'+
- '<td><input class="ws-group" value="'+esc(p.group||'')+'"></td><td><input class="ws-chips" type="number" min="0" value="'+Number(p.chips||0)+'"></td><td><button class="danger ws-remove">移除</button></td></tr>'}).join('');
+ '<td><input class="ws-chips" type="number" min="0" value="'+Number(p.chips||0)+'"></td><td><button class="danger ws-remove">移除</button></td><td><input class="ws-group" value="'+esc(p.group||'')+'"></td></tr>'}).join('');
  document.querySelector('#workspacePlayerTotals').innerHTML='<tr><td colspan="2">合計</td><td>'+totals.buyin+'</td><td>'+totals.rebuy+'</td><td>'+totals.groups+'</td><td>'+money(totals.early)+'</td><td>'+money(totals.late)+'</td><td>'+money(totals.rd)+'</td><td>'+money(totals.groupDiscount)+'</td><td>'+money(totals.other)+'</td><td>'+money(totals.paid)+'</td><td colspan="3"></td></tr>';
  const adminGross=totals.buyin*Number(e.buyinAdmin||0)+totals.rebuy*Number(e.rebuyAdmin||0),discounts=totals.early+totals.late+totals.rd+totals.overbuy+totals.other;
  const prizeBase=totals.buyin*Math.max(0,Number(e.buyinTotal||0)-Number(e.buyinAdmin||0))+totals.rebuy*Math.max(0,Number(e.rebuyTotal||0)-Number(e.rebuyAdmin||0));
@@ -115,7 +125,7 @@ document.querySelector('#workspacePlayerRows').addEventListener('change',async e
  else if(e.target.classList.contains('ws-chips')){p.chips=Number(e.target.value||0);patch.chips=p.chips}else return;
  renderWorkspace();try{await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch})}catch(err){alert('更新失敗：'+err.message);loadWorkspacePlayers()}
 });
-document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);try{await api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key});loadEvents()}catch(err){WORKSPACE_PLAYERS=old;renderWorkspace();alert('移除失敗：'+err.message)}});
+document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key}).then(()=>{loadEvents()}).catch(err=>{WORKSPACE_PLAYERS=old;renderWorkspace();alert('移除失敗：'+err.message)})});
 document.querySelector('#workspaceSettle').addEventListener('click',()=>alert('下一階段接回 EPCMANAGEMENT 的 ICM / 結算頁；目前先完成賽事操作頁。'));
 
 document.querySelector('#eventMemberSearch').addEventListener('input',e=>{const q=memberSearchText(e.target.value);const box=document.querySelector('#eventMemberMatches');if(!q){box.innerHTML='';return}const joined=new Set(EVENT_PLAYERS.map(x=>x.memberKey));const list=MEMBER_ROWS.filter(m=>!joined.has(m.memberKey)&&[m.memberId,m.name,m.nickname].some(v=>memberSearchText(v).includes(q))).slice(0,8);box.innerHTML=list.map(m=>'<button type="button" class="member-match" data-key="'+esc(m.memberKey)+'"><span><b>'+esc(m.name)+'</b><small>'+esc(m.memberId)+(m.nickname?' · '+esc(m.nickname):'')+'</small></span><strong>＋ 加入</strong></button>').join('')});
