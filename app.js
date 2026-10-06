@@ -53,10 +53,11 @@ let WORKSPACE_EVENT=null,WORKSPACE_PLAYERS=[];
 function eventCalcPlayer(p,e){
  const buyin=Math.max(0,Number(p.buyin??1)),rebuy=Math.max(0,Number(p.rebuy??0)),groups=buyin+rebuy;
  const gross=buyin*Number(e.buyinTotal||0)+rebuy*Number(e.rebuyTotal||0);
- const early=Number(p.earlyDiscount||0),late=Number(p.lateDiscount||0),rd=Number(p.rebuyDiscount||0),other=Number(p.otherDiscount||0);
- const autoGroup=Math.max(0,Math.min(groups-1,9))*Number(e.rebuyAdmin||0)/2+Math.max(0,groups-10)*Number(e.rebuyAdmin||0);
- const groupDiscount=Math.max(Number(p.entryDiscount||0),autoGroup),discount=early+late+rd+groupDiscount+other;
- return {buyin,rebuy,groups,gross,early,late,rd,groupDiscount,other,discount,paid:Math.max(0,gross-discount)};
+ const early=Number(p.earlyDiscount||0),late=Number(p.lateDiscount||0),other=Number(p.otherDiscount||0);
+ const rd=Math.max(0,Math.min(groups-1,9))*Number(e.rebuyAdmin||0)/2;
+ const overbuy=Math.max(0,groups-10)*Number(e.rebuyAdmin||0);
+ const discount=early+late+rd+overbuy+other;
+ return {buyin,rebuy,groups,gross,early,late,rd,overbuy,other,discount,paid:Math.max(0,gross-discount)};
 }
 function showOnlyPage(id){document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===id))}
 async function openEventWorkspace(id){
@@ -75,15 +76,15 @@ function filterWorkspaceMembers(q){
 }
 function renderWorkspace(){
  const e=WORKSPACE_EVENT;if(!e)return;const body=document.querySelector('#workspacePlayerRows');document.querySelector('#workspacePlayerCount').textContent=WORKSPACE_PLAYERS.length+' 人';
- let totals={buyin:0,rebuy:0,groups:0,gross:0,early:0,late:0,rd:0,groupDiscount:0,other:0,paid:0};
+ let totals={buyin:0,rebuy:0,groups:0,gross:0,early:0,late:0,rd:0,overbuy:0,other:0,paid:0};
  body.innerHTML=WORKSPACE_PLAYERS.map(p=>{const c=eventCalcPlayer(p,e);Object.keys(totals).forEach(k=>totals[k]+=Number(c[k]||0));
  return '<tr data-key="'+esc(p.memberKey)+'"><td class="name">'+esc(p.name||'')+'</td><td>'+esc(p.memberId||'')+'</td>'+
  '<td><input class="ws-buyin" type="number" min="0" value="'+c.buyin+'"></td><td><input class="ws-rebuy" type="number" min="0" value="'+c.rebuy+'"></td><td class="ws-groups">'+c.groups+'</td>'+
- '<td><input class="ws-early" type="number" min="0" value="'+c.early+'"></td><td><input class="ws-late" type="number" min="0" value="'+c.late+'"></td><td><input class="ws-rd" type="number" min="0" value="'+c.rd+'"></td>'+
- '<td class="ws-groupdisc">'+money(c.groupDiscount)+'</td><td><input class="ws-other" type="number" min="0" value="'+c.other+'"></td><td class="ws-paid">'+money(c.paid)+'</td>'+
+ '<td><input class="ws-early" type="number" min="0" value="'+c.early+'"></td><td><input class="ws-late" type="number" min="0" value="'+c.late+'"></td><td class="ws-auto">'+money(c.rd)+'</td>'+
+ '<td class="ws-auto">'+money(c.overbuy)+'</td><td><input class="ws-other" type="number" min="0" value="'+c.other+'"></td><td class="ws-paid">'+money(c.paid)+'</td>'+
  '<td><input class="ws-group" value="'+esc(p.group||'')+'"></td><td><input class="ws-chips" type="number" min="0" value="'+Number(p.chips||0)+'"></td><td><button class="danger ws-remove">移除</button></td></tr>'}).join('');
  document.querySelector('#workspacePlayerTotals').innerHTML='<tr><td colspan="2">合計</td><td>'+totals.buyin+'</td><td>'+totals.rebuy+'</td><td>'+totals.groups+'</td><td>'+money(totals.early)+'</td><td>'+money(totals.late)+'</td><td>'+money(totals.rd)+'</td><td>'+money(totals.groupDiscount)+'</td><td>'+money(totals.other)+'</td><td>'+money(totals.paid)+'</td><td colspan="3"></td></tr>';
- const adminGross=totals.buyin*Number(e.buyinAdmin||0)+totals.rebuy*Number(e.rebuyAdmin||0),discounts=totals.early+totals.late+totals.rd+totals.groupDiscount+totals.other;
+ const adminGross=totals.buyin*Number(e.buyinAdmin||0)+totals.rebuy*Number(e.rebuyAdmin||0),discounts=totals.early+totals.late+totals.rd+totals.overbuy+totals.other;
  const prizeBase=totals.buyin*Math.max(0,Number(e.buyinTotal||0)-Number(e.buyinAdmin||0))+totals.rebuy*Math.max(0,Number(e.rebuyTotal||0)-Number(e.rebuyAdmin||0));
  const jp=Math.floor(prizeBase*Number(e.jpRate||0)/100),unit=Math.max(1,Number(e.icmRound||100)),prize=Math.floor((prizeBase*(1-Number(e.icmRate||0)/100))/unit)*unit;
  const k=[['參賽人數',WORKSPACE_PLAYERS.length],['重買人數',WORKSPACE_PLAYERS.filter(p=>Number(p.rebuy||0)>0).length],['總組數',totals.groups],['總買入',money(totals.gross)],['總優惠',money(discounts)],['總獎金',money(prize)],['實收行政費',money(Math.max(0,adminGross-discounts))],['JP',money(jp)]];
@@ -109,13 +110,12 @@ document.querySelector('#workspacePlayerRows').addEventListener('change',async e
  else if(e.target.classList.contains('ws-rebuy')){p.rebuy=Math.max(0,Number(e.target.value||0));patch.rebuy=p.rebuy;patch.entries=Number(p.buyin??1)+p.rebuy}
  else if(e.target.classList.contains('ws-early')){p.earlyDiscount=Number(e.target.value||0);patch.earlyDiscount=p.earlyDiscount}
  else if(e.target.classList.contains('ws-late')){p.lateDiscount=Number(e.target.value||0);patch.lateDiscount=p.lateDiscount}
- else if(e.target.classList.contains('ws-rd')){p.rebuyDiscount=Number(e.target.value||0);patch.rebuyDiscount=p.rebuyDiscount}
  else if(e.target.classList.contains('ws-other')){p.otherDiscount=Number(e.target.value||0);patch.otherDiscount=p.otherDiscount}
  else if(e.target.classList.contains('ws-group')){p.group=e.target.value.trim();patch.group=p.group}
  else if(e.target.classList.contains('ws-chips')){p.chips=Number(e.target.value||0);patch.chips=p.chips}else return;
- renderWorkspace();try{await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch});loadEvents()}catch(err){alert('更新失敗：'+err.message);loadWorkspacePlayers()}
+ renderWorkspace();try{await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch})}catch(err){alert('更新失敗：'+err.message);loadWorkspacePlayers()}
 });
-document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;try{await api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:tr.dataset.key});WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==tr.dataset.key);renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);loadEvents()}catch(err){alert('移除失敗：'+err.message)}});
+document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);try{await api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key});loadEvents()}catch(err){WORKSPACE_PLAYERS=old;renderWorkspace();alert('移除失敗：'+err.message)}});
 document.querySelector('#workspaceSettle').addEventListener('click',()=>alert('下一階段接回 EPCMANAGEMENT 的 ICM / 結算頁；目前先完成賽事操作頁。'));
 
 document.querySelector('#eventMemberSearch').addEventListener('input',e=>{const q=memberSearchText(e.target.value);const box=document.querySelector('#eventMemberMatches');if(!q){box.innerHTML='';return}const joined=new Set(EVENT_PLAYERS.map(x=>x.memberKey));const list=MEMBER_ROWS.filter(m=>!joined.has(m.memberKey)&&[m.memberId,m.name,m.nickname].some(v=>memberSearchText(v).includes(q))).slice(0,8);box.innerHTML=list.map(m=>'<button type="button" class="member-match" data-key="'+esc(m.memberKey)+'"><span><b>'+esc(m.name)+'</b><small>'+esc(m.memberId)+(m.nickname?' · '+esc(m.nickname):'')+'</small></span><strong>＋ 加入</strong></button>').join('')});
