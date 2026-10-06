@@ -6,7 +6,7 @@ function localISO(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.ge
 function businessDate(now=new Date(),start=CONFIG.businessStart,end=CONFIG.businessEnd){const [sh,sm]=start.split(':').map(Number),[eh,em]=end.split(':').map(Number),mins=now.getHours()*60+now.getMinutes(),s=sh*60+sm,e=eh*60+em,d=new Date(now);if(e<s&&mins<e)d.setDate(d.getDate()-1);return localISO(d)}
 async function api(action,payload={}){
   if(!CONFIG.apiUrl)throw new Error('尚未設定 API URL');
-  const ctrl=new AbortController(),timeout=action==='eight.bootstrap'?25000:12000,timer=setTimeout(()=>ctrl.abort(),timeout);
+  const ctrl=new AbortController(),isRead=['eight.ping','eight.bootstrap','eight.members.list','eight.events.list','eight.eventPlayers.list','eight.events.snapshot'].includes(action),timeout=action==='eight.bootstrap'?35000:(isRead?30000:20000),timer=setTimeout(()=>ctrl.abort(),timeout);
   try{
     const res=await fetch(CONFIG.apiUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload}),signal:ctrl.signal});
     const raw=await res.text();let data;
