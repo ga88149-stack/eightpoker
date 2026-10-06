@@ -44,7 +44,7 @@
  <article class="card table-card"><div class="card-title"><h2>會員資料</h2><span id="memberResultInfo">載入中…</span></div><table><thead><tr><th>會員編號</th><th>姓名</th><th>綽號</th><th>分帳群組</th><th>參賽場次</th><th>總組數</th><th>盈虧</th><th>消費佔比</th><th>最近到店</th><th></th></tr></thead><tbody><tr><td colspan="10" class="empty">等待 Google Sheet API 連線</td></tr></tbody></table><div class="table-pager"><button id="memberPrev">上一頁</button><button id="memberNext">下一頁</button></div></article>
 </section>
 <section id="events" class="page">
- <div class="toolbar card"><div><input type="date"><button>今天</button></div><button class="gold">＋ 建立賽事</button></div>
+ <div class="toolbar card"><div><input type="date" id="eventDate"><button id="eventTodayBtn">今天</button></div><button class="gold" id="createEventBtn">＋ 建立賽事</button></div>
  <div class="grid3"><article class="card module"><b>賽事設定</b><p>名稱、時間、級別、標準/自訂收費、JP、優惠門檻、預設規則</p></article><article class="card module"><b>玩家 KEYIN</b><p>關鍵字加入、座位、買入/重買、優惠、支付、單場分帳群組</p></article><article class="card module"><b>籌碼清算 / ICM</b><p>差額歸零後計算，最低 100，可人工調整，A4 滿版列印</p></article></div>
  <article class="card"><div class="card-title"><h2>當日賽事</h2><span>依營業日歸屬</span></div><div class="empty">尚未載入賽事</div></article>
 </section>
@@ -56,6 +56,26 @@
 <section id="devices" class="page"><article class="card"><div class="card-title"><h2>DISPLAY 設備</h2><button class="gold">＋ 新增設備</button></div><p class="muted">每台設備可獨立設定活動、輪播順序、各頁秒數、字體大小、排名筆數、姓名/會員編號與顯示欄位。</p><div class="empty">尚未連接設備</div></article></section>
 <section id="settings" class="page"><div class="grid2"><article class="card"><h2>營業日設定</h2><div class="form-row"><label>開始時間<input type="time" id="businessStart" value="16:00"></label><label>結束時間<input type="time" id="businessEnd" value="07:00"></label></div><p class="muted">跨午夜資料仍歸屬前一個營業日。所有賽事、帳務、活動與排行榜共用同一規則。</p><button class="gold" id="saveBusinessHours">儲存設定</button><span id="businessSaveState" class="save-state"></span></article><article class="card"><h2>資料來源</h2><p><b>Google Sheet</b><br>Form Responses 1 = 會員主表<br>EPC_DATA = 舊資料 migration source</p><p class="status">● Apps Script API 尚未部署</p></article></div></section>
 </main>
+<div id="eventModal" class="modal" hidden>
+ <div class="modal-backdrop" data-close-event></div>
+ <div class="modal-card card">
+  <div class="card-title"><h2>建立賽事</h2><button type="button" data-close-event>✕</button></div>
+  <form id="eventForm">
+   <div class="member-form-grid">
+    <label>賽事名稱<input id="eventName" required placeholder="例如 3400 限時錦標賽"></label>
+    <label>營業日<input id="eventBusinessDate" type="date" required></label>
+    <label>開始時間<input id="eventStartTime" type="time" required></label>
+    <label>登記截止<input id="eventRegClose" type="time"></label>
+    <label>級別<select id="eventLevel"><option value="3400">3400</option><option value="6600">6600</option><option value="11000">11000</option><option value="21500">21500</option><option value="32000">32000</option><option value="custom">自訂</option></select></label>
+    <label>買入金額<input id="eventBuyin" type="number" min="0" value="3000"></label>
+    <label>行政費<input id="eventFee" type="number" min="0" value="400"></label>
+    <label>JP 提撥 %<input id="eventJP" type="number" min="0" step="0.1" value="3"></label>
+   </div>
+   <div id="eventFormState" class="form-state"></div>
+   <div class="modal-actions"><button type="button" data-close-event>取消</button><button class="gold" type="submit">建立賽事</button></div>
+  </form>
+ </div>
+</div>
 <div id="memberModal" class="modal" hidden>
  <div class="modal-backdrop" data-close-member></div>
  <div class="modal-card card">
