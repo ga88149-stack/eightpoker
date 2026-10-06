@@ -1773,281 +1773,7 @@ html[data-epc-theme="light"] #settlementConfirmModal h3{color:#087f96!important}
   </div>
  </div>
 </div>
-<script type="module">
-/* Firebase Mirror V4 — verified snapshot bridge.
-   Safety rule: Firestore still does NOT overwrite EPC db automatically.
-   Every mirror writes an immutable chunked full snapshot first, verifies it,
-   then publishes the metadata pointer. This prevents a metadata-only hash from
-   being mistaken for proof that the actual Firestore payload is complete. */
-import {initializeApp} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-import {getAuth,GoogleAuthProvider,signInWithPopup,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
-import {getFirestore,doc,setDoc,getDoc,serverTimestamp,writeBatch,onSnapshot,runTransaction} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
-const app=initializeApp({apiKey:"AIzaSyAt98g3mzH_vMifrIq-xvf8hMQwUyUmGiQ",authDomain:"epcmenagement.firebaseapp.com",projectId:"epcmenagement",storageBucket:"epcmenagement.firebasestorage.app",messagingSenderId:"257676873693",appId:"1:257676873693:web:f4edfe9199cc60e8d93034"});
-const auth=getAuth(app),fs=getFirestore(app),provider=new GoogleAuthProvider();
-provider.setCustomParameters({prompt:"select_account"});
-let timer=null,busy=false,pending=false,lastFingerprint="",suppressMirrorUntil=0;
-let verifiedSnapshot=null,verifiedMeta=null;
-function epcFieldKey_(path){
- let h=2166136261;
- for(let i=0;i<path.length;i++){h^=path.charCodeAt(i);h=Math.imul(h,16777619);}
- return 'f_'+(h>>>0).toString(16);
-}
-window.epcFirebasePublishFieldChanges=async function(changes){
- if(window.EPC_RECOVERY_READONLY)return false;
- if(!auth.currentUser)return false;
- const queue=(changes||[]).filter(x=>!x.publishedAt).slice(0,100);
- for(const ch of queue){
-  const ref=doc(fs,'epcFieldVersions',epcFieldKey_(String(ch.path||'')));
-  const result=await runTransaction(fs,async tx=>{
-   const snap=await tx.get(ref);
-   const old=snap.exists()?snap.data():{};
-   const remoteVersion=Number(old.version||0);
-   const sameBase=JSON.stringify(clean(old.value))===JSON.stringify(clean(ch.before));
-   const sameClient=String(old.clientId||'')===String(ch.clientId||'');
-   // A deliberate "keep local" resolution is valid only if the remote field
-   // has not advanced again since the operator made that choice.
-   const forcedVersion=Number(ch.forceFromVersion||0);
-   if(forcedVersion>0 && remoteVersion!==forcedVersion){
-    return {conflict:true,old,remoteVersion};
-   }
-   if(!forcedVersion && remoteVersion>0 && !sameBase && !sameClient){
-    return {conflict:true,old,remoteVersion};
-   }
-   const version=remoteVersion+1;
-   tx.set(ref,{
-    path:String(ch.path||''),value:clean(ch.after),previousValue:clean(ch.before),
-    clientId:String(ch.clientId||''),clientChangedAt:Number(ch.changedAt||Date.now()),
-    previousVersion:remoteVersion,version,updatedAt:serverTimestamp()
-   });
-   return {conflict:false,version,remoteVersion};
-  });
-  if(result.conflict){
-   const old=result.old||{};
-   ch.conflict=true;ch.remoteVersion=result.remoteVersion;ch.remoteValue=clean(old.value);
-   ch.remoteClientId=String(old.clientId||'');
-   delete ch.forceFromVersion;
-   window.epcFirebaseFieldConflict={path:String(ch.path||''),local:clean(ch.after),remote:clean(old.value),before:clean(ch.before),remoteVersion:result.remoteVersion};
-   if(typeof window.epcShowFieldConflict==='function')window.epcShowFieldConflict(window.epcFirebaseFieldConflict);
-   const el=document.getElementById('firebaseMirrorState');
-   if(el){el.textContent='Firebase：⚠ 欄位版本衝突｜交易已阻止覆蓋｜'+String(ch.path||'');el.style.color='#ffb74d';}
-   continue;
-  }
-  ch.publishedAt=Date.now();ch.publishedVersion=result.version;ch.baseVersion=result.version;ch.conflict=false;
-  delete ch.forceFromVersion;
-  if(ch.needsMirrorAfterPublish){
-   delete ch.needsMirrorAfterPublish;
-   // Conflict resolution may change a field that the old lightweight fingerprint
-   // does not include. Force a SHA-256 mirror rebuild so the chosen value becomes
-   // the published realtime snapshot.
-   if(typeof window.epcFirebaseMirrorForce==='function')await window.epcFirebaseMirrorForce();
-   else if(typeof window.epcFirebaseMirrorSchedule==='function')window.epcFirebaseMirrorSchedule();
-  }
- }
- localStorage.setItem('epcFieldChangesV1',JSON.stringify(changes||[]));
- return true;
-};
 
-function state(s,bad=false){const e=document.getElementById("firebaseMirrorState");if(e){e.textContent=s;e.style.color=bad?"#ff6b6b":"#91a0b2";}}
-function clean(v){return JSON.parse(JSON.stringify(v??null));}
-function safeId(v,fallback){const s=String(v??fallback??"").trim().replaceAll("/","_");return s||String(fallback||Date.now());}
-function stableJson_(v){
- const seen=new WeakSet();
- return JSON.stringify(v,function(k,val){
-  if(val&&typeof val==="object"){
-   if(seen.has(val))return "[Circular]";
-   seen.add(val);
-   if(!Array.isArray(val)){
-    const o={};Object.keys(val).sort().forEach(key=>{o[key]=val[key]});return o;
-   }
-  }
-  return val;
- });
-}
-async function hashText_(txt){
- const bytes=new TextEncoder().encode(txt);
- const hash=await crypto.subtle.digest("SHA-256",bytes);
- return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,"0")).join("");
-}
-async function fullHash_(v){return hashText_(stableJson_(clean(v)));}
-function fingerprint(d){try{return JSON.stringify([d.updatedAt,(d.members||[]).length,(d.events||[]).length,d.currentEventId,d.activityManagement,d.dailySettlementReports,d.settings]).length+":"+String(d.updatedAt||"");}catch(_){return String(Date.now());}}
-async function commitOps(ops){
- for(let i=0;i<ops.length;i+=350){
-  const batch=writeBatch(fs);
-  for(const op of ops.slice(i,i+350))batch.set(op.ref,op.data,{merge:true});
-  await batch.commit();
- }
-}
-function makeGeneration_(){return Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,10);}
-function chunkText_(txt,size=450000){
- const out=[];for(let i=0;i<txt.length;i+=size)out.push(txt.slice(i,i+size));return out.length?out:[""];
-}
-async function readSnapshot_(meta){
- const generation=String(meta&&meta.generation||"");
- const count=Number(meta&&meta.snapshotChunks||0);
- if(!generation||!Number.isInteger(count)||count<1||count>100)throw new Error("SNAPSHOT_META_INVALID");
- const reads=[];
- for(let i=0;i<count;i++)reads.push(getDoc(doc(fs,"epcMirrorSnapshots",generation,"chunks","chunk_"+String(i).padStart(3,"0"))));
- const snaps=await Promise.all(reads);
- let txt="";
- for(let i=0;i<snaps.length;i++){
-  if(!snaps[i].exists())throw new Error("SNAPSHOT_CHUNK_MISSING_"+i);
-  const x=snaps[i].data()||{};
-  if(Number(x.index)!==i||typeof x.value!=="string")throw new Error("SNAPSHOT_CHUNK_INVALID_"+i);
-  txt+=x.value;
- }
- const byteCount=new TextEncoder().encode(txt).length;
- if(Number(meta.fullDataBytes)!==byteCount)throw new Error("SNAPSHOT_BYTES_MISMATCH");
- const hash=await hashText_(txt);
- if(!meta.fullDataHash||hash!==meta.fullDataHash)throw new Error("SNAPSHOT_HASH_MISMATCH");
- const data=JSON.parse(txt);
- return {data,hash,bytes:byteCount,generation};
-}
-async function mirror(){
- if(window.EPC_RECOVERY_READONLY){state('Firebase：唯讀復原模式｜禁止寫入');return;}
- if(busy){pending=true;return;}
- const u=auth.currentUser;
- if(!u||String(u.email||"").toLowerCase()!=="ga88149@gmail.com"){state("Firebase：等待登入");return;}
- if(!window.epcDb||typeof window.epcDb!=="object")return;
- const snap=clean(window.epcDb),fp=fingerprint(snap);
- if(fp===lastFingerprint){state("Firebase：鏡像已同步");return;}
- busy=true;pending=false;
- try{
-  const stable=stableJson_(snap),fullHash=await hashText_(stable),fullBytes=new TextEncoder().encode(stable).length;
-  // If Firestore already contains this exact database, do not create another
-  // generation. This breaks A<->B mirror echo loops.
-  try{
-    const cur=await getDoc(doc(fs,"epcMirrorMeta","current"));
-    if(cur.exists()&&String((cur.data()||{}).fullDataHash||"")===fullHash){
-      lastFingerprint=fp;state("Firebase：即時連線 ✓｜資料已一致");return;
-    }
-  }catch(_){}
-  state("Firebase：建立完整快照…");
-  const generation=makeGeneration_(),snapshotChunks=chunkText_(stable);
-  const snapshotOps=snapshotChunks.map((value,i)=>({
-   ref:doc(fs,"epcMirrorSnapshots",generation,"chunks","chunk_"+String(i).padStart(3,"0")),
-   data:{index:i,value,generation,_mirrorSource:"EIGHT POKER MANAGEMENT"}
-  }));
-  await commitOps(snapshotOps);
-
-  // Verify the immutable snapshot payload before publishing it as current.
-  const preMeta={generation,snapshotChunks:snapshotChunks.length,fullDataHash:fullHash,fullDataBytes:fullBytes};
-  await readSnapshot_(preMeta);
-
-  // The verified full snapshot is the authoritative realtime payload.
-  // Do NOT rewrite all 1,600+ member/event index documents on every small edit;
-  // that made clients appear stuck at "同步索引" and created unnecessary writes.
-  // Index rebuilding will be handled separately/incrementally when search indexes
-  // actually change.
-  state("Firebase：快照驗證完成｜發布版本…");
-  const members=Array.isArray(snap.members)?snap.members:[];
-  const events=Array.isArray(snap.events)?snap.events:[];
-  const core={...snap};delete core.members;delete core.events;
-  const coreJson=JSON.stringify(core),coreChunks=chunkText_(coreJson);
-
-  await setDoc(doc(fs,"epcMirrorMeta","current"),{
-   schema:"mirror-v4-verified-snapshot",source:"EIGHT POKER MANAGEMENT",generation,
-   memberCount:members.length,eventCount:events.length,fullDataHash:fullHash,fullDataBytes:fullBytes,
-   snapshotChunks:snapshotChunks.length,coreChunks:coreChunks.length,
-   legacyRevision:Number(window.epcCloudRevision||0),dbUpdatedAt:String(snap.updatedAt||""),
-   mirroredAt:serverTimestamp(),clientTime:new Date().toISOString()
-  },{merge:false});
-  lastFingerprint=fp;
-  verifiedSnapshot=snap;verifiedMeta={generation,fullDataHash:fullHash};
-  state("Firebase：✓ 完整快照已驗證 "+new Date().toLocaleTimeString());
- }catch(e){console.error("Firebase mirror failed",e);state("Firebase：鏡像失敗（正式資料不受影響）",true);}
- finally{busy=false;if(pending)setTimeout(mirror,300);}
-}
-window.epcFirebaseMirrorSchedule=()=>{if(window.EPC_RECOVERY_READONLY)return;if(Date.now()<suppressMirrorUntil)return;clearTimeout(timer);timer=setTimeout(mirror,1200);};
-window.epcFirebaseMirrorForce=()=>{lastFingerprint="";suppressMirrorUntil=0;clearTimeout(timer);return mirror();};
-window.epcFirebaseMirrorNow=()=>mirror();
-window.epcFirebaseReadVerified=async()=>{
- const u=auth.currentUser;
- if(!u)throw new Error("FIREBASE_NOT_SIGNED_IN");
- const s=await getDoc(doc(fs,"epcMirrorMeta","current"));
- if(!s.exists())throw new Error("MIRROR_META_NOT_FOUND");
- const meta=s.data()||{};
- const result=await readSnapshot_(meta);
- verifiedSnapshot=result.data;verifiedMeta=meta;
- return clean(result.data);
-};
-window.epcFirebaseVerifiedMeta=()=>clean(verifiedMeta);
-window.epcFirebaseRecoveryAudit=async()=>{
- const u=auth.currentUser;
- if(!u)throw new Error("FIREBASE_NOT_SIGNED_IN");
- const s=await getDoc(doc(fs,"epcMirrorMeta","current"));
- if(!s.exists())throw new Error("MIRROR_META_NOT_FOUND");
- const meta=s.data()||{},result=await readSnapshot_(meta),data=clean(result.data||{});
- const events=Array.isArray(data.events)?data.events:[];
- const dates=events.map(e=>String(e&&e.date||"")).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x)).sort();
- const audit={schema:String(meta.schema||""),generation:String(meta.generation||""),memberCount:(data.members||[]).length,eventCount:events.length,latestEventDate:dates.length?dates[dates.length-1]:"",snapshotHashOk:result.hash===String(meta.fullDataHash||""),legacyRevision:Number(meta.legacyRevision||0),clientTime:String(meta.clientTime||"")};
- window.epcRecoveryAuditResult=audit;
- state("Firebase：唯讀盤點完成｜會員 "+audit.memberCount+"｜賽事 "+audit.eventCount+"｜最新 "+(audit.latestEventDate||"—"));
- return audit;
-};
-
-
-/* Phase 1 realtime observer — detection only.
-   It NEVER mutates EPC db. This lets us prove A/B delivery before enabling remote apply. */
-let realtimeUnsub=null,lastSeenGeneration="";
-function startRealtimeObserver_(){
- if(realtimeUnsub)realtimeUnsub();
- realtimeUnsub=onSnapshot(doc(fs,"epcMirrorMeta","current"),async s=>{
-  if(!s.exists())return;
-  const m=s.data()||{},generation=String(m.generation||"");
-  if(!generation||generation===lastSeenGeneration)return;
-  lastSeenGeneration=generation;
-  try{
-   const remote=await readSnapshot_(m);
-   const local=clean(window.epcDb||{});
-   const localHash=await fullHash_(local);
-   const same=remote.hash===localHash;
-   window.dispatchEvent(new CustomEvent("epcFirebaseRemoteSnapshot",{detail:{generation,meta:clean(m),sameAsLocal:same,data:clean(remote.data)}}));
-   if(same){
-    verifiedSnapshot=remote.data;verifiedMeta=m;
-    state("Firebase：即時連線 ✓｜本機與最新快照一致");
-   }else{
-    // Phase 2: only auto-apply when this client has no unsaved local work and
-    // the legacy cloud is not in the middle of a save/edit. Otherwise keep the
-    // verified snapshot pending so nothing can overwrite an operator mid-entry.
-    // Do not replace the whole local database from a remote snapshot here.
-    // Field-level versions are the concurrency authority; a whole-db apply can
-    // erase a valid edit made on another field.
-    window.epcFirebasePending={data:clean(remote.data),meta:clean(m)};
-    verifiedSnapshot=remote.data;verifiedMeta=m;
-    state("Firebase：收到另一台更新｜完整快照已驗證｜欄位同步保護中");
-   }
-  }catch(e){
-   console.error("Firebase realtime snapshot verify failed",e);
-   state("Firebase：收到更新但驗證失敗｜未套用",true);
-  }
- },e=>{console.error("Firebase realtime observer failed",e);state("Firebase：即時監聽中斷｜正式資料不受影響",true);});
-}
-window.epcFirebaseStartRealtimeObserver=startRealtimeObserver_;
-window.epcFirebaseVerify=async()=>{
- const u=auth.currentUser;
- if(!u){state("Firebase：請先登入",true);return false;}
- try{
-  state("Firebase：讀回完整快照並驗證…");
-  const s=await getDoc(doc(fs,"epcMirrorMeta","current"));
-  if(!s.exists())throw new Error("找不到鏡像狀態");
-  const m=s.data()||{},local=clean(window.epcDb||{});
-  if(m.schema!=="mirror-v4-verified-snapshot")throw new Error("請先重新鏡像成 V4 完整快照");
-  const remote=await readSnapshot_(m);
-  const localHash=await fullHash_(local);
-  const localMembers=(local.members||[]).length,localEvents=(local.events||[]).length;
-  const remoteMembers=(remote.data.members||[]).length,remoteEvents=(remote.data.events||[]).length;
-  const countsOk=Number(m.memberCount)===localMembers&&Number(m.eventCount)===localEvents&&remoteMembers===localMembers&&remoteEvents===localEvents;
-  const hashOk=remote.hash===localHash&&m.fullDataHash===localHash;
-  const ok=countsOk&&hashOk;
-  verifiedSnapshot=ok?remote.data:null;verifiedMeta=ok?m:null;
-  const t=m.mirroredAt&&m.mirroredAt.toDate?m.mirroredAt.toDate().toLocaleTimeString():"—";
-  state(ok?`Firebase：✓ 完整一致｜Firestore 實體快照 SHA-256 通過｜會員 ${localMembers}｜賽事 ${localEvents}｜${t}`:`Firebase：⚠ 完整資料不一致｜數量 ${countsOk?"✓":"✗"}｜內容 ${hashOk?"✓":"✗"}｜禁止進入雙向同步`,!ok);
-  return ok;
- }catch(e){console.error("Firebase verify failed",e);state("Firebase：完整快照驗證失敗｜"+String(e.message||e),true);return false;}
-};
-window.epcFirebaseLogin=async()=>{try{await signInWithPopup(auth,provider);}catch(e){console.error(e);state("Firebase：登入失敗",true);}};
-onAuthStateChanged(auth,u=>{if(u&&String(u.email||"").toLowerCase()==="ga88149@gmail.com"){state("Firebase：已登入｜唯讀盤點中…");startRealtimeObserver_();setTimeout(async()=>{try{const a=await window.epcFirebaseRecoveryAudit();let box=document.getElementById("epcRecoveryAuditBox");if(!box){box=document.createElement("div");box.id="epcRecoveryAuditBox";box.style.cssText="position:fixed;right:16px;bottom:16px;z-index:2147483647;background:#101923;border:2px solid #d6b35a;border-radius:12px;padding:14px 16px;color:#fff;font-weight:800;max-width:520px;box-shadow:0 12px 40px #000";document.body.appendChild(box);}box.textContent="Firebase 唯讀盤點｜會員 "+a.memberCount+"｜賽事 "+a.eventCount+"｜最新賽事 "+(a.latestEventDate||"—")+"｜SHA-256 "+(a.snapshotHashOk?"通過":"失敗")+"｜Revision "+a.legacyRevision;}catch(e){state("Firebase：唯讀盤點失敗｜"+String(e&&e.message||e),true);}},700);}else if(u)state("Firebase：帳號未授權",true);else{if(realtimeUnsub){realtimeUnsub();realtimeUnsub=null;}state("Firebase：尚未登入");}});
-</script>
 <style id="epcNavHardGuard">
 #nav{position:relative!important;z-index:2147483647!important;pointer-events:auto!important}
 #nav button[data-page]{pointer-events:auto!important;position:relative!important;z-index:2147483647!important}
@@ -2092,7 +1818,7 @@ main{margin-left:0!important;width:auto!important;max-width:none!important;paddi
   document.documentElement.setAttribute('data-epc-theme',t==='light'?'light':'dark');
  }catch(_){document.documentElement.setAttribute('data-epc-theme','dark')}
 })();
-</script><body><script>window.EPC_RECOVERY_READONLY=true;</script>
+</script><body><script>window.EPC_RECOVERY_READONLY=false;</script>
 <header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V1</span></div></header>
 <nav id="nav">
 <button data-page="dashboard" class="active">總覽</button>
@@ -2750,7 +2476,7 @@ let cloudBase=JSON.parse(localStorage.getItem('epcCloudBase')||'null');
 let liveSyncTimer=null;
 Object.defineProperty(window,'epcDb',{configurable:true,get:()=>db});
 Object.defineProperty(window,'epcCloudRevision',{configurable:true,get:()=>cloudRevision});
-if(typeof window.epcFirebaseMirrorSchedule==='function')setTimeout(()=>window.epcFirebaseMirrorSchedule(),300);
+
 
 
 function setCloudState(text,isError=false){
@@ -2843,13 +2569,13 @@ function scheduleCloudReconnect_(){
      const ping=await cloudGet('ping');
      cloudReady=true;
      if(localDirty){
-       setCloudState('● 雲端已恢復｜正在補同步…');
+       setCloudState('● 資料庫已恢復｜正在補同步…');
        await saveCloudNow(false);
      }else{
-       setCloudState('☁ 雲端連線已恢復');
+       setCloudState('● 資料庫連線已恢復');
      }
    }catch(err){
-     setCloudState('⚠ 雲端暫時離線｜本機資料安全保存｜將自動重連',true);
+     setCloudState('⚠ 資料庫暫時離線｜本機資料安全保存｜將自動重連',true);
      scheduleCloudReconnect_();
    }
  },15000);
@@ -3112,7 +2838,7 @@ function startLiveSync_(){
        localStorage.setItem('epcCloudRevision',String(loadedRev));
        localStorage.removeItem('epcLocalDirty');
        render();
-       setCloudState('☁ 已同步另一台電腦｜Revision '+loadedRev);
+       setCloudState('● 已同步另一台電腦｜Revision '+loadedRev);
        return;
      }
 
@@ -3141,8 +2867,8 @@ function startLiveSync_(){
  },1500);
 }
 async function initializeCloud(){
- if(window.EPC_RECOVERY_READONLY){cloudReady=false;setCloudState('☁ 10/3 唯讀基線｜已禁止舊雲端覆蓋');render();return;}
- setCloudState('● 本機已儲存｜正在連接雲端…');
+ if(window.EPC_RECOVERY_READONLY){cloudReady=false;setCloudState('● 10/3 唯讀基線｜已禁止舊資料庫覆蓋');render();return;}
+ setCloudState('● 本機已儲存｜正在連接資料庫…');
  try{
    const res=await cloudGet('load');
    const serverRevision=Number(res.revision||0);
@@ -3165,7 +2891,7 @@ async function initializeCloud(){
        localStorage.setItem('epcLocalDirty','1');
        cloudReady=true;
        render();
-       setCloudState('● 已合併雲端｜正在補同步本機修改…');
+       setCloudState('● 已合併資料庫｜正在補同步本機修改…');
        await saveCloudNow(false);
        return;
      }else{
@@ -3198,11 +2924,11 @@ async function initializeCloud(){
    if(!hasRemote)await saveCloudNow(false);
    else{
      const t=res.updatedAt?new Date(res.updatedAt).toLocaleTimeString():new Date().toLocaleTimeString();
-     setCloudState('☁ 雲端已載入｜Revision '+cloudRevision+'｜'+t);
+     setCloudState('● 資料庫已載入｜Revision '+cloudRevision+'｜'+t);
    }
  }catch(err){
    cloudReady=false;
-   setCloudState('⚠ 雲端暫時離線｜本機資料安全保存｜將自動重連',true);
+   setCloudState('⚠ 資料庫暫時離線｜本機資料安全保存｜將自動重連',true);
    console.error('EPC cloud init failed',err);
    scheduleCloudReconnect_();
    render();
@@ -3227,18 +2953,18 @@ async function refreshFormMembers(saveAfter=true){
  }catch(err){console.error('member refresh failed',err);return false;}
 }
 function scheduleCloudSave(){
- if(window.EPC_RECOVERY_READONLY){setCloudState('☁ 唯讀復原模式｜禁止雲端寫入');return;}
+ if(window.EPC_RECOVERY_READONLY){setCloudState('● 唯讀復原模式｜禁止資料庫寫入');return;}
  cloudPending=true;
  clearTimeout(cloudSaveTimer);
  if(!cloudReady){
-   setCloudState('● 待同步｜本機已儲存｜等待雲端恢復');
+   setCloudState('● 待同步｜本機已儲存｜等待資料庫恢復');
    scheduleCloudReconnect_();
    return;
  }
  cloudSaveTimer=setTimeout(saveCloudNow,900);
 }
 async function saveCloudNow(force=false){
- if(window.EPC_RECOVERY_READONLY){setCloudState('☁ 唯讀復原模式｜禁止雲端寫入');return false;}
+ if(window.EPC_RECOVERY_READONLY){setCloudState('● 唯讀復原模式｜禁止資料庫寫入');return false;}
  const fieldConflict=!!window.epcFirebaseFieldConflict||(window.epcFieldChanges||[]).some(ch=>ch.conflict);
  if((window.epcFirebaseConflicts||[]).length||fieldConflict){
    cloudPending=true;
@@ -3248,12 +2974,12 @@ async function saveCloudNow(force=false){
  if(cloudSaving){cloudPending=true;return false;}
  if(!cloudReady){
    localDirty=true; localStorage.setItem('epcLocalDirty','1');
-   setCloudState('● 待同步｜本機已儲存｜等待雲端恢復');
+   setCloudState('● 待同步｜本機已儲存｜等待資料庫恢復');
    scheduleCloudReconnect_();
    return false;
  }
  cloudSaving=true; cloudPending=false;
- setCloudState('☁ 正在比對雲端最新資料…');
+ setCloudState('● 正在比對資料庫最新資料…');
  backupLocal('before-cloud-save-v2');
  const writeId=makeWriteId();
  try{
@@ -3270,7 +2996,7 @@ async function saveCloudNow(force=false){
    candidate=preserveManualDiscountEdits_(localAtStart,candidate);
    candidate=preserveMembers_(localAtStart,candidate,latest.members);
 
-   setCloudState('☁ 正在儲存合併後資料…');
+   setCloudState('● 正在儲存合併後資料…');
    const res=await cloudPost({
      action:'save',
      data:candidate,
@@ -3312,14 +3038,14 @@ async function saveCloudNow(force=false){
    localStorage.setItem('epcV1',JSON.stringify(db));
    if(!epcEditLocked_())render();
    const t=res.updatedAt?new Date(res.updatedAt).toLocaleTimeString():new Date().toLocaleTimeString();
-   setCloudState(changedDuringSave?'● 雲端已儲存｜剛才的新修改繼續同步中…':'☁ 雲端同步完成｜Revision '+cloudRevision+'｜'+t);
+   setCloudState(changedDuringSave?'● 資料庫已儲存｜剛才的新修改繼續同步中…':'● 資料庫同步完成｜Revision '+cloudRevision+'｜'+t);
    return true;
  }catch(err){
    console.error('cloud save failed',err);
    localDirty=true;
    localStorage.setItem('epcLocalDirty','1');
    const msg=String(err&&err.message||err||'UNKNOWN');
-   setCloudState('⚠ 本機資料已保留｜雲端儲存未完成｜'+msg,true);
+   setCloudState('⚠ 本機資料已保留｜資料庫儲存未完成｜'+msg,true);
    if(!isConflictError_(err))scheduleCloudReconnect_();
    else cloudPending=true;
    return false;
@@ -3343,7 +3069,7 @@ async function manualCloudSync(){
 let __phoneStackSyncBusy=false;
 async function readPhoneStacksApi(eventId){
  // V1.38：改用 POST 讀取，避免 GitHub Pages -> Apps Script GET 偶發 404。
- // 只讀 PHONE_STACKS；失敗時不修改任何本機/雲端賽事資料。
+ // 只讀 PHONE_STACKS；失敗時不修改任何本機/資料庫賽事資料。
  const r=await fetch(STACK_API,{
    method:'POST',
    headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -3367,7 +3093,7 @@ async function syncPhoneStacksOnly(){
  __phoneStackSyncBusy=true;
  if(btn){btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='同步中…';}
  try{
-  setCloudState('☁ 正在讀取手機籌碼…');
+  setCloudState('● 正在讀取手機籌碼…');
   const res=await readPhoneStacksApi(localEvent.id);
   const map={};
   (res.stacks||[]).forEach(x=>map[String(x.memberId)]=x.stack);
@@ -3379,7 +3105,7 @@ async function syncPhoneStacksOnly(){
     if(!Number.isFinite(stack)||stack<0){missing++;return;}
     if(Number(lp.stack)!==stack){lp.stack=stack;updated++;}else unchanged++;
   });
-  // 手機籌碼讀回後必須成為正式賽事資料，否則下一次 EPC_DATA 雲端同步
+  // 手機籌碼讀回後必須成為正式賽事資料，否則下一次 EPC_DATA 資料庫同步
   // 會把剛讀到的 stack 當成本機暫存而覆蓋掉。
   if(updated>0){
     touchEvent_(localEvent);
@@ -3390,7 +3116,7 @@ async function syncPhoneStacksOnly(){
   render();
   if(updated>0 && cloudReady)await saveCloudNow(false);
   actionMsg(`手機籌碼同步完成｜更新 ${updated} 人｜相同 ${unchanged} 人｜未輸入 ${missing} 人`);
-  setCloudState(updated>0?'☁ 手機籌碼已同步至電腦與雲端':'☁ 手機籌碼已同步｜資料相同');
+  setCloudState(updated>0?'● 手機籌碼已同步至電腦與資料庫':'● 手機籌碼已同步｜資料相同');
  }catch(err){
   console.error(err);
   setCloudState('⚠ 手機籌碼同步失敗｜電腦資料未被覆蓋',true);
@@ -3417,11 +3143,11 @@ async function loadVerifiedRecovery_(){
 }
 async function manualCloudLoad(){
  if(localDirty){
-   const ok=confirm('這台電腦有尚未成功上傳的修改。\n\n從雲端載入會替換目前畫面資料，但系統會先建立本機安全備份。\n\n確定要載入雲端嗎？');
+   const ok=confirm('這台電腦有尚未成功上傳的修改。\n\n從資料庫載入會替換目前畫面資料，但系統會先建立本機安全備份。\n\n確定要載入資料庫嗎？');
    if(!ok)return;
  }
  try{
-   setCloudState('☁ 正在從雲端載入…');
+   setCloudState('● 正在從資料庫載入…');
    backupLocal('before-manual-cloud-load');
    const res=await cloudGet('load');
    if(!res.data || typeof res.data!=='object')throw new Error('CLOUD_EMPTY');
@@ -3436,10 +3162,10 @@ async function manualCloudLoad(){
    cloudReady=true;
    render();
    const t=res.updatedAt ? new Date(res.updatedAt).toLocaleTimeString() : new Date().toLocaleTimeString();
-   setCloudState('☁ 已載入雲端｜Revision '+cloudRevision+'｜'+t);
+   setCloudState('● 已載入資料庫｜Revision '+cloudRevision+'｜'+t);
  }catch(err){
    console.error(err);
-   setCloudState('⚠ 雲端載入失敗｜目前本機資料未變更',true);
+   setCloudState('⚠ 資料庫載入失敗｜目前本機資料未變更',true);
  }
 }
 
@@ -3812,7 +3538,7 @@ function persist(){
  localDirty=true;
  localStorage.setItem('epcLocalDirty','1');
  scheduleCloudSave();
- if(typeof window.epcFirebaseMirrorSchedule==='function')window.epcFirebaseMirrorSchedule();
+ 
 }
 document.querySelectorAll('#nav button[data-page]').forEach(b=>b.onclick=()=>{document.querySelectorAll('#nav button[data-page]').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const target=$(b.dataset.page);if(target)target.classList.add('active');render()});
 async function addMember(){
@@ -3825,7 +3551,7 @@ async function addMember(){
  try{
    let member={id,name,group,note,history:[],createdAt:Date.now(),createdDate:new Date().toISOString(),source:'EPC'};
    if(cloudReady){
-     setCloudState('☁ 正在新增會員…');
+     setCloudState('● 正在新增會員…');
      const res=await cloudPost({action:'addMember',member:{id,name}});
      if(res.member)member={...member,...res.member,group,note,history:[]};
    }
@@ -3848,7 +3574,7 @@ async function addMember(){
    const msg=String(err.message||err);
    if(msg.includes('MEMBER_EXISTS'))alert('此會員 ID 已存在於會員資料，請勿重複新增。');
    else alert('會員新增失敗：'+msg);
-   setCloudState('☁ 新增會員失敗',true);
+   setCloudState('● 新增會員失敗',true);
  }finally{
    if(btn){btn.disabled=false;btn.textContent='新增會員';btn.onclick=addMember;}
  }
@@ -3865,7 +3591,7 @@ async function performDelMember(id){
  const m=(db.members||[]).find(x=>String(x.id)===sid);
  try{
    if(cloudReady && m && String(m.source||'').includes('Form Responses')){
-     setCloudState('☁ 正在刪除會員…');
+     setCloudState('● 正在刪除會員…');
      await cloudPost({action:'deleteMember',memberId:sid});
    }
    db.members=(db.members||[]).filter(x=>String(x.id)!==sid);
@@ -3876,7 +3602,7 @@ async function performDelMember(id){
  }catch(err){
    console.error('delete member failed',err);
    alert('會員刪除失敗：'+String(err.message||err));
-   setCloudState('☁ 刪除會員失敗',true);
+   setCloudState('● 刪除會員失敗',true);
  }
 }
 let editingMemberId=null;
@@ -3908,16 +3634,16 @@ async function saveMemberEdit(){
  if(cloudReady){
    try{
      await saveCloudNow();
-     // 雲端快照完成後才重新抓 Form Responses 1。
+     // 資料庫快照完成後才重新抓 Form Responses 1。
      // mergeFormMembers 會保留 EPC_DATA 的 group / note / history。
      await refreshFormMembers(false);
      renderMemberRows();
    }catch(err){
      console.error('member edit cloud save failed',err);
-     setCloudState('☁ 修改已存本機｜雲端同步失敗',true);
+     setCloudState('● 修改已存本機｜資料庫同步失敗',true);
    }
  }else{
-   setCloudState('☁ 修改已存本機｜等待雲端連線');
+   setCloudState('● 修改已存本機｜等待資料庫連線');
  }
 }
 function cancelMemberEdit(){
@@ -4259,7 +3985,7 @@ async function performDeleteEventByIndex(index){
  localStorage.setItem('epcV1',JSON.stringify(db));
  render();
  actionMsg(`已刪除：${label}；分帳報表已同步更新`);
- // 不等待 900ms 排程，避免刪除後立刻關閉頁面造成雲端仍保留舊賽事。
+ // 不等待 900ms 排程，避免刪除後立刻關閉頁面造成資料庫仍保留舊賽事。
  if(cloudReady) await saveCloudNow();
 }
 function removePlayerByIndex(index){
@@ -6386,11 +6112,11 @@ function printEventReport(){
 })();
 
 render();
-window.addEventListener('online',()=>{cloudReady=true;setCloudState('● 網路已恢復｜檢查雲端同步…');scheduleCloudReconnect_();});
+window.addEventListener('online',()=>{cloudReady=true;setCloudState('● 網路已恢復｜檢查資料庫同步…');scheduleCloudReconnect_();});
 window.addEventListener('offline',()=>{cloudReady=false;setCloudState('⚠ 網路已離線｜本機資料安全保存',true);});
 setInterval(()=>{if(!cloudSaving && (!cloudReady||localDirty))scheduleCloudReconnect_();},30000);
 initializeCloud();
-startLiveSync_();
+// live polling disabled: avoid repeated Google reads
 // V1.38.4: nickname columns + 12-13px adaptive event-report print; auto member sync preserved.
 // This only refreshes the member list from MAIN API; it never calls full cloud load.
 let __memberAutoRefreshBusy=false;
@@ -6400,9 +6126,7 @@ async function autoRefreshMembers(){
  try{await refreshFormMembers(false);}
  finally{__memberAutoRefreshBusy=false;}
 }
-setInterval(autoRefreshMembers,15000);
-window.addEventListener('focus',autoRefreshMembers);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)autoRefreshMembers();});
+// Eight Poker: no periodic/focus member rereads; Google data loads once at startup.
 
 /* ===== V1.50.0 Display Devices ===== */
 const DISPLAY_API_KEY='epcDisplayApiUrlV1';
