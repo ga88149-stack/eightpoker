@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>EIGHT POKER MANAGEMENT System V2.0</title>
+<title>EIGHT POKER MANAGEMENT V2.0.1</title>
 <style>
 :root{--bg:#0b0f14;--card:#121922;--card2:#17212c;--text:#eef3f8;--muted:#91a0b2;--line:#263443;--accent:#d6b35a;--good:#49c27d;--bad:#ff6b6b}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif}
@@ -1819,7 +1819,7 @@ main{margin-left:0!important;width:auto!important;max-width:none!important;paddi
  }catch(_){document.documentElement.setAttribute('data-epc-theme','dark')}
 })();
 </script><body><script>window.EPC_RECOVERY_READONLY=false;</script>
-<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V1</span></div></header>
+<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V2.0.1</span></div></header>
 <nav id="nav">
 <button data-page="dashboard" class="active">總覽</button>
 <button data-page="members">會員</button>
@@ -1832,6 +1832,17 @@ main{margin-left:0!important;width:auto!important;max-width:none!important;paddi
 
 <button id="epcThemeToggle" data-theme-control="1" type="button" onclick="event.preventDefault();event.stopPropagation();toggleEpcTheme_();return false;" title="切換深淺色模式"><span class="themeDot"></span><span id="epcThemeText">☀ 切換淺色</span></button></nav>
 <main>
+<div class="card" role="status" aria-live="polite" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+ <div style="flex:1;min-width:220px"><strong id="eightMemberState">會員資料準備載入…</strong><div id="saveState" class="small" style="margin-top:5px">正在啟動系統</div></div>
+ <button id="eightMemberRetry" type="button" onclick="eightReloadMembers_()">重新讀取會員</button>
+</div>
+<script>
+window.addEventListener('error',function(e){
+ if(!e.message)return;
+ var el=document.getElementById('saveState');
+ if(el){el.textContent='畫面執行錯誤：'+e.message;el.style.color='#ff8a8a';}
+});
+</script>
 <div id="actionMsg" style="display:none;position:sticky;top:72px;z-index:20;padding:11px 14px;margin-bottom:12px;border-radius:10px;background:#17212c;border:1px solid #d6b35a;color:#eef3f8;font-weight:700"></div>
 <section id="dashboard" class="page active">
  <div style="display:flex;justify-content:space-between;align-items:end;gap:14px;flex-wrap:wrap;margin-bottom:14px">
@@ -2468,7 +2479,11 @@ const money=n=>'$'+Math.round(Number(n||0)).toLocaleString('zh-TW');
 const uid=()=>String(Date.now()).slice(-8)+Math.floor(Math.random()*90+10);
 const CLOUD_API='https://script.google.com/macros/s/AKfycbwj-jLaSTiljcw15_UnhUFv4QxVq5HbNyers3ybU-6IAkwSj_A5X36x-852Xu5MxobS/exec';
 const STACK_API='https://script.google.com/macros/s/AKfycbwJgutjAat9guTMsUgLYymwP0CbOUKpVzWyg5bKe65xa51ysBJas2QMbkjB5B2wpDeJVQ/exec';
-let db=JSON.parse(localStorage.getItem('epcV1')||'null')||{members:[],jpBalance:0,events:[],currentEventId:null};
+function eightReadCache_(key,fallback){
+ try{const value=JSON.parse(localStorage.getItem(key)||'null');return value&&typeof value==='object'&&!Array.isArray(value)?value:fallback;}
+ catch(err){console.warn('Local cache unavailable: '+key,err);return fallback;}
+}
+let db=eightReadCache_('epcV1',{members:[],jpBalance:0,events:[],currentEventId:null});
 // Normalize the minimum schema BEFORE the first render. A fresh/empty browser cache
 // previously crashed at db.settings.businessStart, so initializeCloud() never ran.
 if(!db.settings||typeof db.settings!=='object')db.settings={};
@@ -2481,7 +2496,7 @@ if(!Array.isArray(db.dailySettlementReports))db.dailySettlementReports=[];
 let cloudRevision=Number(localStorage.getItem('epcCloudRevision')||0);
 let cloudReady=false,cloudSaving=false,cloudSaveTimer=null,cloudPending=false;
 let localDirty=localStorage.getItem('epcLocalDirty')==='1';
-let cloudBase=JSON.parse(localStorage.getItem('epcCloudBase')||'null');
+let cloudBase=eightReadCache_('epcCloudBase',null);
 let liveSyncTimer=null;
 Object.defineProperty(window,'epcDb',{configurable:true,get:()=>db});
 Object.defineProperty(window,'epcCloudRevision',{configurable:true,get:()=>cloudRevision});
@@ -2878,40 +2893,77 @@ function startLiveSync_(){
    }
  },1500);
 }
+let eightCloudLoadBusy_=false,eightMemberLoadBusy_=false;
+function eightMemberStatus_(text,error=false){
+ const el=$('eightMemberState');if(el){el.textContent=text;el.style.color=error?'#ff8a8a':'';}
+}
+function eightRenderMembers_(){
+ // Update the member count even when another module or a focused input defers full rendering.
+ if($('kMembers'))$('kMembers').textContent=String((db.members||[]).length);
+ renderMemberRows();
+}
+async function eightReloadMembers_(){
+ if(eightCloudLoadBusy_||eightMemberLoadBusy_)return;
+ eightMemberLoadBusy_=true;
+ const button=$('eightMemberRetry');if(button)button.disabled=true;
+ eightMemberStatus_('正在從 Google Sheet 讀取會員…');
+ try{
+   // This read must not mark an uninitialized full database ready for writes.
+   const response=await fetchWithTimeout_(CLOUD_API+'?action=members&_='+Date.now(),{cache:'no-store',redirect:'follow'});
+   if(!response.ok)throw new Error('HTTP '+response.status);
+   const result=await response.json();
+   if(!result.ok||!Array.isArray(result.members))throw new Error(result.error||'會員 API 回傳格式不正確');
+   const members=result.members.filter(m=>m&&String(m.id||'').trim());
+   if(result.members.length&&!members.length)throw new Error('會員資料缺少會員編號');
+   if(!members.length){eightMemberStatus_('Google Sheet 回傳 0 筆會員；目前保留畫面原有資料。',true);return;}
+   db.members=mergeFormMembers(db.members,members);
+   epcLastPersistSnapshot_=cloneCloud_(db);
+   eightRenderMembers_();
+   try{localStorage.setItem('epcV1',JSON.stringify(db));}catch(err){setCloudState('會員已載入，但此瀏覽器無法保存快取：'+err.message,true);}
+   eightMemberStatus_('會員已載入 '+db.members.length+' 人｜'+new Date().toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei'}));
+ }catch(err){
+   eightMemberStatus_('會員讀取失敗：'+String(err&&err.message||err)+'。請按「重新讀取會員」。',true);
+ }finally{eightMemberLoadBusy_=false;if(button)button.disabled=false;}
+}
 async function initializeCloud(){
+ if(eightCloudLoadBusy_)return;
+ eightCloudLoadBusy_=true;
+ const button=$('eightMemberRetry');if(button)button.disabled=true;
  setCloudState('● 正在載入 Google 資料…');
+ eightMemberStatus_('正在從 Google Sheet 載入會員…');
+ let loaded=false;
  try{
    const res=await cloudGet('load');
    if(!res || !res.data || typeof res.data!=='object')throw new Error('GOOGLE_DATA_EMPTY');
    let remote=cloneCloud_(res.data);
    remote=preserveMembers_({members:[]},remote,res.members);
+   if(!remote.settings||typeof remote.settings!=='object')remote.settings={};
+   if(!remote.settings.businessStart)remote.settings.businessStart='16:00';
+   if(!remote.settings.businessEnd)remote.settings.businessEnd='07:00';
+   for(const key of ['members','events','dailyAccounting','dailySettlementReports'])if(!Array.isArray(remote[key]))remote[key]=[];
    db=remote;
    cloudRevision=Number(res.revision||0);
    setCloudBase_(remote);
-   localDirty=false;
-   cloudPending=false;
-   localStorage.removeItem('epcLocalDirty');
-   localStorage.setItem('epcCloudRevision',String(cloudRevision));
-   localStorage.setItem('epcV1',JSON.stringify(db));
-   if(!db.settings)db.settings={};
-   if(!db.settings.businessStart)db.settings.businessStart='16:00';
-   if(!db.settings.businessEnd)db.settings.businessEnd='07:00';
-   if(!Array.isArray(db.dailySettlementReports))db.dailySettlementReports=[];
-   cloudReady=true;
+   localDirty=false;cloudPending=false;cloudReady=true;
    epcLastPersistSnapshot_=cloneCloud_(db);
-   render();
+   loaded=true;
+   try{
+     localStorage.removeItem('epcLocalDirty');
+     localStorage.setItem('epcCloudRevision',String(cloudRevision));
+     localStorage.setItem('epcV1',JSON.stringify(db));
+   }catch(err){console.warn('Cloud loaded but local cache unavailable',err);}
+   eightRenderMembers_();
+   eightMemberStatus_('會員已載入 '+db.members.length+' 人');
    setCloudState('● Google 資料已載入｜Revision '+cloudRevision);
+   try{render();}catch(err){setCloudState('資料已載入；部分畫面錯誤：'+err.message,true);}
  }catch(err){
-   cloudReady=false;
+   if(!loaded)cloudReady=false;
    console.error('Google startup load failed',err);
-   setCloudState('⚠ Google 資料載入失敗｜'+String(err&&err.message||err),true);
-   const banner=document.getElementById('eightLoadError')||document.createElement('div');
-   banner.id='eightLoadError';
-   banner.style.cssText='position:fixed;z-index:99999;top:12px;left:50%;transform:translateX(-50%);background:#7a2020;color:white;padding:10px 16px;border-radius:8px;font-weight:700';
-   banner.textContent='Google 資料載入失敗，請重新整理；若持續出現我會直接修 API。';
-   document.body.appendChild(banner);
-   render();
+   setCloudState('⚠ 完整資料載入失敗：'+String(err&&err.message||err)+'｜嘗試單獨讀取會員',true);
+ }finally{
+   eightCloudLoadBusy_=false;if(button)button.disabled=false;
  }
+ if(!loaded||!db.members.length)await eightReloadMembers_();
 }
 async function refreshFormMembers(saveAfter=true){
  if(epcEditLocked_())return false;
@@ -6093,7 +6145,7 @@ function printEventReport(){
  if(b&&b.parentElement)b.parentElement.style.display='none';
 })();
 
-render();
+try{render();}catch(err){console.error('Initial render failed',err);setCloudState('初始畫面錯誤：'+err.message+'｜繼續載入雲端會員',true);}
 window.addEventListener('online',()=>{cloudReady=true;setCloudState('● 網路已恢復｜檢查資料庫同步…');scheduleCloudReconnect_();});
 window.addEventListener('offline',()=>{cloudReady=false;setCloudState('⚠ 網路已離線｜本機資料安全保存',true);});
 setInterval(()=>{if(!cloudSaving && (!cloudReady||localDirty))scheduleCloudReconnect_();},30000);
