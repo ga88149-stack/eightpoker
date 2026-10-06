@@ -26,6 +26,7 @@ function eightPokerApi_(req){
     case 'eight.eventPlayers.add': return {ok:true,player:eightAddEventPlayer_(req.eventId,req.memberKey)};
     case 'eight.eventPlayers.update': return {ok:true,player:eightUpdateEventPlayer_(req.eventId,req.memberKey,req.patch||{})};
     case 'eight.eventPlayers.delete': return {ok:true,result:eightDeleteEventPlayer_(req.eventId,req.memberKey)};
+    case 'eight.eventPlayers.saveAll': return {ok:true,players:eightSaveAllEventPlayers_(req.eventId,req.players||[])};
     default: throw new Error('UNKNOWN_ACTION');
   }
 }
@@ -34,7 +35,7 @@ function eightIdx_(h,names){for(const n of names){const i=h.indexOf(n);if(i>=0)r
 function eightEnsureSheet_(name,headers){
   const ss=eightDb_();let sh=ss.getSheetByName(name);if(!sh)sh=ss.insertSheet(name);
   if(sh.getLastRow()===0)sh.getRange(1,1,1,headers.length).setValues([headers]);
-  else {const cur=sh.getRange(1,1,1,Math.max(sh.getLastColumn(),headers.length)).getDisplayValues()[0];headers.forEach((x,i)=>{if(cur[i]!==x)sh.getRange(1,i+1).setValue(x)})}
+  else {const width=Math.max(sh.getLastColumn(),headers.length),cur=sh.getRange(1,1,1,width).getDisplayValues()[0];headers.forEach((x,i)=>{if(!cur[i])sh.getRange(1,i+1).setValue(x);else if(cur[i]!==x)throw new Error('SCHEMA_MISMATCH '+name+' col '+(i+1)+': '+cur[i]+' != '+x)})}
   sh.setFrozenRows(1);return sh;
 }
 function eightMeta_(){return eightEnsureSheet_(EIGHT_META_SHEET,['MEMBER_KEY','POKER_FANS_ID','姓名快照','綽號','分帳群組','會員狀態','建立時間','更新時間'])}
@@ -115,9 +116,37 @@ function eightAddEventPlayer_(eventId,memberKey){
   const lock=LockService.getScriptLock();lock.waitLock(10000);try{eightFindEventRow_(eventId);const f=eightFindMember_(memberKey),existing=eightListEventPlayers_(eventId);if(existing.some(x=>x.memberKey===memberKey))throw new Error('PLAYER_ALREADY_IN_EVENT');const s=eightMemberSource_(),rows=eightFindSourceRowsById_(s,f.id);if(rows.length!==1)throw new Error('MEMBER_NOT_FOUND');const src=s.v[rows[0]-1],name=s.c.name>=0?src[s.c.name]:'',now=new Date();eightPlayers_().appendRow([eventId,memberKey,f.id,name,1,0,f.meta[4]||'',0,'active',now,now,0,0,0,0,0,1,0]);return {eventId,memberKey,memberId:f.id,name,entries:1,buyin:1,rebuy:0,discount:0,group:f.meta[4]||'',chips:0}}finally{lock.releaseLock()}
 }
 function eightFindPlayerRow_(eventId,key){const sh=eightPlayers_(),v=sh.getDataRange().getDisplayValues();for(let i=1;i<v.length;i++)if(v[i][0]===eventId&&v[i][1]===key&&v[i][8]!=='deleted')return {sh,row:i+1};throw new Error('EVENT_PLAYER_NOT_FOUND')}
-function eightUpdateEventPlayer_(eventId,key,p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{const f=eightFindPlayerRow_(eventId,key),map={entries:5,discount:6,group:7,chips:8,status:9,earlyDiscount:12,lateDiscount:13,rebuyDiscount:14,entryDiscount:15,otherDiscount:16,buyin:17,rebuy:18};Object.keys(map).forEach(k=>{if(k in p){let v=p[k];if(['entries','discount','chips','earlyDiscount','lateDiscount','rebuyDiscount','entryDiscount','otherDiscount','buyin','rebuy'].includes(k)){v=Number(v||0);if(v<0)throw new Error('INVALID_NUMBER')}f.sh.getRange(f.row,map[k]).setValue(v)}});f.sh.getRange(f.row,11).setValue(new Date());return {eventId,memberKey:key}}finally{lock.releaseLock()}}
+function eightUpdateEventPlayer_(eventId,key,p){
+  const lock=LockService.getScriptLock();lock.waitLock(10000);try{
+    const f=eightFindPlayerRow_(eventId,key),sh=f.sh,row=f.row;
+    const cur=sh.getRange(row,1,1,18).getValues()[0];
+    let buyin=('buyin' in p)?Number(p.buyin||0):Number(cur[16]||1);
+    let rebuy=('rebuy' in p)?Number(p.rebuy||0):Number(cur[17]||0);
+    if(buyin<0||rebuy<0)throw new Error('INVALID_NUMBER');
+    if('buyin' in p||'rebuy' in p||'entries' in p){
+      cur[16]=buyin;cur[17]=rebuy;cur[4]=buyin+rebuy;
+    }
+    const map={discount:5,group:6,chips:7,status:8,earlyDiscount:11,lateDiscount:12,rebuyDiscount:13,entryDiscount:14,otherDiscount:15};
+    Object.keys(map).forEach(k=>{if(k in p){let v=p[k];if(['discount','chips','earlyDiscount','lateDiscount','rebuyDiscount','entryDiscount','otherDiscount'].includes(k)){v=Number(v||0);if(v<0)throw new Error('INVALID_NUMBER')}cur[map[k]]=v}});
+    cur[10]=new Date();sh.getRange(row,1,1,18).setValues([cur]);
+    SpreadsheetApp.flush();
+    return {eventId,memberKey:key,buyin,rebuy,entries:buyin+rebuy}
+  }finally{lock.releaseLock()}
+}
 function eightDeleteEventPlayer_(eventId,key){const lock=LockService.getScriptLock();lock.waitLock(10000);try{const f=eightFindPlayerRow_(eventId,key);f.sh.getRange(f.row,9).setValue('deleted');f.sh.getRange(f.row,11).setValue(new Date());return {deleted:true}}finally{lock.releaseLock()}}
 function eightBootstrap_(){
   const members=eightListMembers_(),settings=eightSettings_(),now=new Date(),monthNew=members.filter(m=>{const d=new Date(m.timestamp);return !isNaN(d)&&d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()}).length;
   return {ok:true,settings,members,summary:{memberCount:members.length,monthNewMembers:monthNew}}
+}
+function eightSaveAllEventPlayers_(eventId,players){
+  const lock=LockService.getScriptLock();lock.waitLock(15000);try{
+    eightFindEventRow_(eventId);const sh=eightPlayers_(),data=sh.getDataRange().getValues(),byKey=new Map();
+    for(let i=1;i<data.length;i++)if(String(data[i][0])===String(eventId)&&data[i][8]!=='deleted')byKey.set(String(data[i][1]),i+1);
+    players.forEach(p=>{const row=byKey.get(String(p.memberKey));if(!row)return;const cur=sh.getRange(row,1,1,18).getValues()[0];
+      const b=Math.max(0,Number(p.buyin??cur[16]??1)),rb=Math.max(0,Number(p.rebuy??cur[17]??0));cur[4]=b+rb;cur[16]=b;cur[17]=rb;
+      if('earlyDiscount' in p)cur[11]=Number(p.earlyDiscount||0);if('lateDiscount' in p)cur[12]=Number(p.lateDiscount||0);
+      if('otherDiscount' in p)cur[15]=Number(p.otherDiscount||0);if('group' in p)cur[6]=p.group||'';if('chips' in p)cur[7]=Number(p.chips||0);
+      cur[10]=new Date();sh.getRange(row,1,1,18).setValues([cur]);
+    });SpreadsheetApp.flush();return eightListEventPlayers_(eventId)
+  }finally{lock.releaseLock()}
 }
