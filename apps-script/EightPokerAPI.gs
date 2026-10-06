@@ -11,23 +11,27 @@ const EIGHT_PLAYER_SHEET='EPC_賽事玩家';
 const EIGHT_SETTINGS_SHEET='EPC_系統設定';
 
 function eightPokerApi_(req){
-  switch(String(req.action||'')){
-    case 'eight.bootstrap': return eightBootstrap_();
-    case 'eight.members.list': return {ok:true,members:eightListMembers_()};
-    case 'eight.members.create': return {ok:true,member:eightCreateMember_(req.member||{})};
-    case 'eight.members.update': return {ok:true,member:eightUpdateMember_(req.memberKey,req.patch||{})};
-    case 'eight.members.delete': return {ok:true,result:eightDeleteMember_(req.memberKey)};
-    case 'eight.settings.update': return {ok:true,settings:eightUpdateSettings_(req.settings||{})};
-    case 'eight.events.list': return {ok:true,events:eightListEvents_(req.businessDate)};
-    case 'eight.events.create': return {ok:true,event:eightCreateEvent_(req.event||{})};
-    case 'eight.events.update': return {ok:true,event:eightUpdateEvent_(req.eventId,req.patch||{})};
-    case 'eight.events.delete': return {ok:true,result:eightDeleteEvent_(req.eventId)};
-    case 'eight.eventPlayers.list': return {ok:true,players:eightListEventPlayers_(req.eventId)};
-    case 'eight.eventPlayers.add': return {ok:true,player:eightAddEventPlayer_(req.eventId,req.memberKey)};
-    case 'eight.eventPlayers.update': return {ok:true,player:eightUpdateEventPlayer_(req.eventId,req.memberKey,req.patch||{})};
-    case 'eight.eventPlayers.delete': return {ok:true,result:eightDeleteEventPlayer_(req.eventId,req.memberKey)};
-    case 'eight.eventPlayers.saveAll': return {ok:true,players:eightSaveAllEventPlayers_(req.eventId,req.players||[])};
-    default: throw new Error('UNKNOWN_ACTION');
+  try{
+    switch(String(req.action||'')){
+      case 'eight.bootstrap': return eightBootstrap_();
+      case 'eight.members.list': return {ok:true,members:eightListMembers_()};
+      case 'eight.members.create': return {ok:true,member:eightCreateMember_(req.member||{})};
+      case 'eight.members.update': return {ok:true,member:eightUpdateMember_(req.memberKey,req.patch||{})};
+      case 'eight.members.delete': return {ok:true,result:eightDeleteMember_(req.memberKey)};
+      case 'eight.settings.update': return {ok:true,settings:eightUpdateSettings_(req.settings||{})};
+      case 'eight.events.list': return {ok:true,events:eightListEvents_(req.businessDate)};
+      case 'eight.events.create': return {ok:true,event:eightCreateEvent_(req.event||{})};
+      case 'eight.events.update': return {ok:true,event:eightUpdateEvent_(req.eventId,req.patch||{})};
+      case 'eight.events.delete': return {ok:true,result:eightDeleteEvent_(req.eventId)};
+      case 'eight.eventPlayers.list': return {ok:true,players:eightListEventPlayers_(req.eventId)};
+      case 'eight.eventPlayers.add': return {ok:true,player:eightAddEventPlayer_(req.eventId,req.memberKey)};
+      case 'eight.eventPlayers.update': return {ok:true,player:eightUpdateEventPlayer_(req.eventId,req.memberKey,req.patch||{})};
+      case 'eight.eventPlayers.delete': return {ok:true,result:eightDeleteEventPlayer_(req.eventId,req.memberKey)};
+      case 'eight.eventPlayers.saveAll': return {ok:true,players:eightSaveAllEventPlayers_(req.eventId,req.players||[])};
+      default: throw new Error('UNKNOWN_ACTION');
+    }
+  }catch(err){
+    return {ok:false,error:String(err&&err.message?err.message:err),stack:String(err&&err.stack?err.stack:'')};
   }
 }
 function eightDb_(){return SpreadsheetApp.openById(EIGHT_DB_ID)}
@@ -111,7 +115,7 @@ function eightCreateEvent_(e){
     const id='E-'+Utilities.getUuid(),now=new Date(),sh=eightEvents_(),row=Math.max(2,sh.getLastRow()+1);
     sh.getRange(row,1,1,19).setValues([[id,e.businessDate,String(e.name).trim(),e.startTime||'',e.regClose||'',e.level||'custom',Number(e.buyin||0),Number(e.fee||0),Number(e.jpRate||0),'open',now,now,Number(e.buyinTotal||0),Number(e.buyinAdmin||0),Number(e.rebuyTotal||0),Number(e.rebuyAdmin||0),Number(e.freeAdminFrom||11),Number(e.icmRate||3),Number(e.icmRound||100)]]);
     SpreadsheetApp.flush();
-    return {eventId:id,...e,status:'open'}
+    return {eventId:id,businessDate:e.businessDate,name:String(e.name||'').trim(),startTime:e.startTime||'',regClose:e.regClose||'',level:e.level||'custom',buyin:Number(e.buyin||0),fee:Number(e.fee||0),jpRate:Number(e.jpRate||0),buyinTotal:Number(e.buyinTotal||0),buyinAdmin:Number(e.buyinAdmin||0),rebuyTotal:Number(e.rebuyTotal||0),rebuyAdmin:Number(e.rebuyAdmin||0),freeAdminFrom:Number(e.freeAdminFrom||11),icmRate:Number(e.icmRate||3),icmRound:Number(e.icmRound||100),status:'open'}
   }finally{lock.releaseLock()}
 }
 function eightFindEventRow_(id){const sh=eightEvents_(),v=sh.getDataRange().getDisplayValues();for(let i=1;i<v.length;i++)if(v[i][0]===id)return {sh,row:i+1,data:v[i]};throw new Error('EVENT_NOT_FOUND')}
