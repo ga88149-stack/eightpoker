@@ -1,5 +1,5 @@
 /**
- * Eight Poker Management API V1.4
+ * Eight Poker Management API V1.7
  * Paste into EightPokerAPI.gs in the existing Apps Script project.
  * Existing doPost routes action starting with "eight." to eightPokerApi_(body).
  */
@@ -117,7 +117,7 @@ function eightDeleteMember_(key){
 }
 function eightListEvents_(businessDate){
   const sh=eightEvents_();if(sh.getLastRow()<2)return [];const v=sh.getRange(2,1,sh.getLastRow()-1,19).getDisplayValues();
-  const events=v.filter(r=>r[0]&&(!businessDate||r[1]===businessDate)&&r[9]!=='deleted').map(r=>({eventId:r[0],businessDate:r[1],name:r[2],startTime:r[3],regClose:r[4],level:r[5],buyin:Number(r[6]||0),fee:Number(r[7]||0),jpRate:Number(r[8]||0),status:r[9]||'open',buyinTotal:Number(r[12]||Number(r[6]||0)+Number(r[7]||0)),buyinAdmin:Number(r[13]||r[7]||0),rebuyTotal:Number(r[14]||Number(r[6]||0)+Number(r[7]||0)),rebuyAdmin:Number(r[15]||r[7]||0),freeAdminFrom:Number(r[16]||11),icmRate:Number(r[17]||3),icmRound:Number(r[18]||100)}));const psh=eightPlayers_(),pv=psh.getLastRow()>1?psh.getRange(2,1,psh.getLastRow()-1,18).getDisplayValues():[];events.forEach(e=>{const ps=pv.filter(r=>r[0]===e.eventId&&r[8]!=='deleted');let totalEntries=0,rebuyPeople=0,early=0,late=0,rebuyDisc=0,entryDisc=0,other=0;ps.forEach(r=>{const b=Math.max(0,Number(r[16]||1)),rb=Math.max(0,Number(r[17]||Math.max(0,Number(r[4]||1)-1))),n=b+rb;totalEntries+=n;if(rb>0)rebuyPeople++;early+=Number(r[11]||0);late+=Number(r[12]||0);const autoRebuy=Math.max(0,rb)*e.rebuyAdmin/2,autoOverbuy=Math.max(0,n-10)*e.rebuyAdmin/2;rebuyDisc+=autoRebuy;entryDisc+=autoOverbuy;other+=Number(r[15]||0)});let totalBuyins=0,totalRebuys=0;ps.forEach(r=>{totalBuyins+=Math.max(0,Number(r[16]||1));totalRebuys+=Math.max(0,Number(r[17]||Math.max(0,Number(r[4]||1)-1)))});const totalGross=totalBuyins*e.buyinTotal+totalRebuys*e.rebuyTotal;const prizeBase=totalBuyins*Math.max(0,e.buyinTotal-e.buyinAdmin)+totalRebuys*Math.max(0,e.rebuyTotal-e.rebuyAdmin);const unit=Math.max(1,e.icmRound||100),prizePool=Math.floor((prizeBase*(1-(e.icmRate||0)/100))/unit)*unit;const jp=Math.floor(prizeBase*(e.jpRate||0)/100);const discounts=early+late+rebuyDisc+entryDisc+other;const adminGross=totalBuyins*e.buyinAdmin+totalRebuys*e.rebuyAdmin;e.summary={participants:ps.length,rebuyPeople,totalEntries,totalGross,earlyDiscount:early,lateDiscount:late,rebuyDiscount:rebuyDisc,entryDiscount:entryDisc,otherDiscount:other,prizePool,adminNet:Math.max(0,adminGross-discounts),jp}});return events
+  const events=v.filter(r=>r[0]&&(!businessDate||r[1]===businessDate)&&r[9]!=='deleted').map(r=>({eventId:r[0],businessDate:r[1],name:r[2],startTime:r[3],regClose:r[4],level:r[5],buyin:Number(r[6]||0),fee:Number(r[7]||0),jpRate:Number(r[8]||0),status:r[9]||'open',buyinTotal:Number(r[12]||Number(r[6]||0)+Number(r[7]||0)),buyinAdmin:Number(r[13]||r[7]||0),rebuyTotal:Number(r[14]||Number(r[6]||0)+Number(r[7]||0)),rebuyAdmin:Number(r[15]||r[7]||0),freeAdminFrom:Number(r[16]||11),icmRate:Number(r[17]||3),icmRound:Number(r[18]||100)}));const psh=eightPlayers_(),pv=psh.getLastRow()>1?psh.getRange(2,1,psh.getLastRow()-1,18).getDisplayValues():[];events.forEach(e=>{const ps=pv.filter(r=>r[0]===e.eventId&&r[8]!=='deleted');let totalEntries=0,rebuyPeople=0,early=0,late=0,rebuyDisc=0,entryDisc=0,other=0;ps.forEach(r=>{const b=Math.max(0,Number(r[16]||1)),rb=Math.max(0,Number(r[17]||Math.max(0,Number(r[4]||1)-1))),n=b+rb;totalEntries+=n;if(rb>0)rebuyPeople++;early+=Number(r[11]||0);late+=Number(r[12]||0);const autoRebuy=Math.max(0,rb)*e.rebuyAdmin/2,autoOverbuy=Math.max(0,n-Math.max(0,e.freeAdminFrom-1))*e.rebuyAdmin/2;rebuyDisc+=autoRebuy;entryDisc+=autoOverbuy;other+=Number(r[15]||0)});let totalBuyins=0,totalRebuys=0;ps.forEach(r=>{totalBuyins+=Math.max(0,Number(r[16]||1));totalRebuys+=Math.max(0,Number(r[17]||Math.max(0,Number(r[4]||1)-1)))});const totalGross=totalBuyins*e.buyinTotal+totalRebuys*e.rebuyTotal;const prizeBase=totalBuyins*Math.max(0,e.buyinTotal-e.buyinAdmin)+totalRebuys*Math.max(0,e.rebuyTotal-e.rebuyAdmin);const unit=Math.max(1,e.icmRound||100),prizePool=Math.floor((prizeBase*(1-(e.icmRate||0)/100))/unit)*unit;const adminGross=totalBuyins*e.buyinAdmin+totalRebuys*e.rebuyAdmin;const jp=Math.floor(adminGross*(e.jpRate||0)/100);const discounts=early+late+rebuyDisc+entryDisc+other;e.summary={participants:ps.length,rebuyPeople,totalEntries,totalGross,earlyDiscount:early,lateDiscount:late,rebuyDiscount:rebuyDisc,entryDiscount:entryDisc,otherDiscount:other,prizePool,adminNet:Math.max(0,adminGross-discounts),jp}});return events
 }
 function eightCreateEvent_(e){
   const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');
@@ -126,15 +126,17 @@ function eightCreateEvent_(e){
     if(!/^\d{4}-\d{2}-\d{2}$/.test(String(e.businessDate||'')))throw new Error('EVENT_DATE_REQUIRED');
     const id='E-'+Utilities.getUuid(),now=new Date(),sh=eightEvents_(),row=Math.max(2,sh.getLastRow()+1);
     sh.getRange(row,1,1,19).setValues([[id,e.businessDate,String(e.name).trim(),e.startTime||'',e.regClose||'',e.level||'custom',Number(e.buyin||0),Number(e.fee||0),Number(e.jpRate||0),'open',now,now,Number(e.buyinTotal||0),Number(e.buyinAdmin||0),Number(e.rebuyTotal||0),Number(e.rebuyAdmin||0),Number(e.freeAdminFrom||11),Number(e.icmRate||3),Number(e.icmRound||100)]]);
-    SpreadsheetApp.flush();
+    
     return {eventId:id,businessDate:e.businessDate,name:String(e.name||'').trim(),startTime:e.startTime||'',regClose:e.regClose||'',level:e.level||'custom',buyin:Number(e.buyin||0),fee:Number(e.fee||0),jpRate:Number(e.jpRate||0),buyinTotal:Number(e.buyinTotal||0),buyinAdmin:Number(e.buyinAdmin||0),rebuyTotal:Number(e.rebuyTotal||0),rebuyAdmin:Number(e.rebuyAdmin||0),freeAdminFrom:Number(e.freeAdminFrom||11),icmRate:Number(e.icmRate||3),icmRound:Number(e.icmRound||100),status:'open'}
   }finally{lock.releaseLock()}
 }
 function eightFindEventRow_(id){const sh=eightEvents_(),v=sh.getDataRange().getDisplayValues();for(let i=1;i<v.length;i++)if(v[i][0]===id)return {sh,row:i+1,data:v[i]};throw new Error('EVENT_NOT_FOUND')}
 function eightUpdateEvent_(id,p){const lock=LockService.getScriptLock();lock.waitLock(10000);try{const f=eightFindEventRow_(id),map={businessDate:2,name:3,startTime:4,regClose:5,level:6,buyin:7,fee:8,jpRate:9,status:10,buyinTotal:13,buyinAdmin:14,rebuyTotal:15,rebuyAdmin:16,freeAdminFrom:17,icmRate:18,icmRound:19};Object.keys(map).forEach(k=>{if(k in p)f.sh.getRange(f.row,map[k]).setValue(p[k])});f.sh.getRange(f.row,12).setValue(new Date());return {eventId:id}}finally{lock.releaseLock()}}
-function eightDeleteEvent_(id){const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');try{const f=eightFindEventRow_(id),r=f.sh.getRange(f.row,1,1,19).getValues()[0];r[9]='deleted';r[11]=new Date();f.sh.getRange(f.row,1,1,19).setValues([r]);SpreadsheetApp.flush();return {deleted:true}}finally{lock.releaseLock()}}
+function eightDeleteEvent_(id){const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');try{const f=eightFindEventRow_(id),r=f.sh.getRange(f.row,1,1,19).getValues()[0];r[9]='deleted';r[11]=new Date();f.sh.getRange(f.row,1,1,19).setValues([r]);return {deleted:true}}finally{lock.releaseLock()}}
 function eightListEventPlayers_(eventId){
-  if(!eventId)return [];const sh=eightPlayers_();if(sh.getLastRow()<2)return [];return sh.getRange(2,1,sh.getLastRow()-1,18).getDisplayValues().filter(r=>r[0]===eventId&&r[8]!=='deleted').map(r=>({eventId:r[0],memberKey:r[1],memberId:r[2],name:r[3],entries:Number(r[4]||1),discount:Number(r[5]||0),group:r[6]||'',chips:Number(r[7]||0),status:r[8]||'active',earlyDiscount:Number(r[11]||0),lateDiscount:Number(r[12]||0),rebuyDiscount:Number(r[13]||0),entryDiscount:Number(r[14]||0),otherDiscount:Number(r[15]||0),buyin:Number(r[16]||1),rebuy:Number(r[17]||Math.max(0,Number(r[4]||1)-1)),revision:r[10]?new Date(r[10]).getTime():0}))
+  if(!eventId)return [];const sh=eightPlayers_();if(sh.getLastRow()<2)return [];
+  const rows=sh.getRange(2,1,sh.getLastRow()-1,18).getValues(),out=[];
+  rows.forEach(r=>{if(String(r[0])!==String(eventId)||String(r[8])==='deleted')return;out.push({eventId:String(r[0]||''),memberKey:String(r[1]||''),memberId:String(r[2]||''),name:String(r[3]||''),entries:Number(r[4]||1),discount:Number(r[5]||0),group:String(r[6]||''),chips:Number(r[7]||0),status:String(r[8]||'active'),earlyDiscount:Number(r[11]||0),lateDiscount:Number(r[12]||0),rebuyDiscount:Number(r[13]||0),entryDiscount:Number(r[14]||0),otherDiscount:Number(r[15]||0),buyin:Number(r[16]||1),rebuy:Number(r[17]||Math.max(0,Number(r[4]||1)-1)),revision:r[10] instanceof Date?r[10].getTime():Number(r[10]||0)})});return out
 }
 function eightAddEventPlayer_(eventId,memberKey){
   const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');
@@ -144,10 +146,10 @@ function eightAddEventPlayer_(eventId,memberKey){
     const s=eightMemberSource_(),rows=eightFindSourceRowsById_(s,f.id);if(rows.length!==1)throw new Error('MEMBER_NOT_FOUND');
     const src=s.v[rows[0]-1],name=s.c.name>=0?src[s.c.name]:'',now=new Date(),row=Math.max(2,last+1);
     sh.getRange(row,1,1,18).setValues([[eventId,memberKey,f.id,name,1,0,f.meta[4]||'',0,'active',now,now,0,0,0,0,0,1,0]]);
-    SpreadsheetApp.flush();return {eventId:eventId,memberKey:memberKey,memberId:f.id,name:name,entries:1,buyin:1,rebuy:0,discount:0,group:f.meta[4]||'',chips:0}
+    return {eventId:eventId,memberKey:memberKey,memberId:f.id,name:name,entries:1,buyin:1,rebuy:0,discount:0,group:f.meta[4]||'',chips:0}
   }finally{lock.releaseLock()}
 }
-function eightFindPlayerRow_(eventId,key){const sh=eightPlayers_(),v=sh.getDataRange().getDisplayValues();for(let i=1;i<v.length;i++)if(v[i][0]===eventId&&v[i][1]===key&&v[i][8]!=='deleted')return {sh,row:i+1};throw new Error('EVENT_PLAYER_NOT_FOUND')}
+function eightFindPlayerRow_(eventId,key){const sh=eightPlayers_(),last=sh.getLastRow();if(last<2)throw new Error('EVENT_PLAYER_NOT_FOUND');const v=sh.getRange(2,1,last-1,9).getDisplayValues();for(let i=0;i<v.length;i++)if(v[i][0]===eventId&&v[i][1]===key&&v[i][8]!=='deleted')return {sh:sh,row:i+2};throw new Error('EVENT_PLAYER_NOT_FOUND')}
 function eightUpdateEventPlayer_(eventId,key,p){
   const lock=LockService.getScriptLock();lock.waitLock(10000);try{
     const f=eightFindPlayerRow_(eventId,key),sh=f.sh,row=f.row;
@@ -162,15 +164,15 @@ function eightUpdateEventPlayer_(eventId,key,p){
     const map={discount:5,group:6,chips:7,status:8,earlyDiscount:11,lateDiscount:12,rebuyDiscount:13,entryDiscount:14,otherDiscount:15};
     Object.keys(map).forEach(k=>{if(k in p){let v=p[k];if(['discount','chips','earlyDiscount','lateDiscount','rebuyDiscount','entryDiscount','otherDiscount'].includes(k)){v=Number(v||0);if(v<0)throw new Error('INVALID_NUMBER')}cur[map[k]]=v}});
     cur[10]=new Date();sh.getRange(row,1,1,18).setValues([cur]);
-    SpreadsheetApp.flush();
+    
     return {eventId:eventId,memberKey:key,buyin:buyin,rebuy:rebuy,entries:buyin+rebuy,revision:cur[10].getTime()}
   }finally{lock.releaseLock()}
 }
-function eightDeleteEventPlayer_(eventId,key){const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');try{const f=eightFindPlayerRow_(eventId,key),r=f.sh.getRange(f.row,1,1,18).getValues()[0];r[8]='deleted';r[10]=new Date();f.sh.getRange(f.row,1,1,18).setValues([r]);SpreadsheetApp.flush();return {deleted:true}}finally{lock.releaseLock()}}
+function eightDeleteEventPlayer_(eventId,key){const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');try{const f=eightFindPlayerRow_(eventId,key),r=f.sh.getRange(f.row,1,1,18).getValues()[0];r[8]='deleted';r[10]=new Date();f.sh.getRange(f.row,1,1,18).setValues([r]);return {deleted:true}}finally{lock.releaseLock()}}
 function eightBootstrap_(){
   const members=eightListMembers_(),settings=eightSettings_(),now=new Date();let monthNew=0;
   members.forEach(m=>{const d=new Date(m.timestamp);if(!isNaN(d)&&d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth())monthNew++});
-  return {ok:true,settings:settings,members:members,summary:{memberCount:members.length,monthNewMembers:monthNew},apiVersion:'V1.5'}
+  return {ok:true,settings:settings,members:members,summary:{memberCount:members.length,monthNewMembers:monthNew},apiVersion:'V1.7'}
 }
 function eightSaveAllEventPlayers_(eventId,players){
   const lock=LockService.getScriptLock();lock.waitLock(15000);try{
@@ -181,11 +183,11 @@ function eightSaveAllEventPlayers_(eventId,players){
       if('earlyDiscount' in p)cur[11]=Number(p.earlyDiscount||0);if('lateDiscount' in p)cur[12]=Number(p.lateDiscount||0);
       if('otherDiscount' in p)cur[15]=Number(p.otherDiscount||0);if('group' in p)cur[6]=p.group||'';if('chips' in p)cur[7]=Number(p.chips||0);
       cur[10]=new Date();sh.getRange(row,1,1,18).setValues([cur]);
-    });SpreadsheetApp.flush();return eightListEventPlayers_(eventId)
+    });return eightListEventPlayers_(eventId)
   }finally{lock.releaseLock()}
 }
 
-function eightHealth_(){const ss=eightDb_();return {ok:true,version:'V1.6',spreadsheet:ss.getId(),memberSheet:!!ss.getSheetByName(EIGHT_MEMBER_SHEET),metaSheet:!!ss.getSheetByName(EIGHT_META_SHEET),eventSheet:!!ss.getSheetByName(EIGHT_EVENT_SHEET),playerSheet:!!ss.getSheetByName(EIGHT_PLAYER_SHEET),time:new Date().toISOString()}}
+function eightHealth_(){const ss=eightDb_();return {ok:true,version:'V1.7',spreadsheet:ss.getId(),memberSheet:!!ss.getSheetByName(EIGHT_MEMBER_SHEET),metaSheet:!!ss.getSheetByName(EIGHT_META_SHEET),eventSheet:!!ss.getSheetByName(EIGHT_EVENT_SHEET),playerSheet:!!ss.getSheetByName(EIGHT_PLAYER_SHEET),time:new Date().toISOString()}}
 
 function eightEventSnapshot_(eventId){
   const f=eightFindEventRow_(eventId),r=f.data,e={eventId:r[0],businessDate:r[1],name:r[2],startTime:r[3],level:r[5],buyinTotal:Number(r[12]||0),buyinAdmin:Number(r[13]||0),rebuyTotal:Number(r[14]||0),rebuyAdmin:Number(r[15]||0),jpRate:Number(r[8]||0),icmRate:Number(r[17]||3),icmRound:Number(r[18]||100)};
