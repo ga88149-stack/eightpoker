@@ -2511,8 +2511,9 @@ function backupLocal(reason){
    }));
  }catch(err){ console.warn('backup failed',err); }
 }
-const CLOUD_RETRY_DELAYS=[0,1800,4500];
-const CLOUD_TIMEOUT_MS=60000;
+const CLOUD_RETRY_DELAYS=[0,1200];
+const CLOUD_TIMEOUT_MS=15000;
+const CLOUD_PROXY='https://script.googleusercontent.com';
 let cloudReconnectTimer=null;
 function sleep_(ms){return new Promise(r=>setTimeout(r,ms));}
 function isConflictError_(err){return String(err&&err.message||err||'').includes('CLOUD_CONFLICT');}
@@ -2568,6 +2569,8 @@ function scheduleCloudReconnect_(){
    try{
      const ping=await cloudGet('ping');
      cloudReady=true;
+     // A ping only proves endpoint reachability; never write stale local data after a failed startup load.
+     if(!cloudBase){ setCloudState('⚠ API 已連線，但正式資料尚未載入',true); return; }
      if(localDirty){
        setCloudState('● 資料庫已恢復｜正在補同步…');
        await saveCloudNow(false);
@@ -2893,6 +2896,11 @@ async function initializeCloud(){
    cloudReady=false;
    console.error('Google startup load failed',err);
    setCloudState('⚠ Google 資料載入失敗｜'+String(err&&err.message||err),true);
+   const banner=document.getElementById('eightLoadError')||document.createElement('div');
+   banner.id='eightLoadError';
+   banner.style.cssText='position:fixed;z-index:99999;top:12px;left:50%;transform:translateX(-50%);background:#7a2020;color:white;padding:10px 16px;border-radius:8px;font-weight:700';
+   banner.textContent='Google 資料載入失敗，請重新整理；若持續出現我會直接修 API。';
+   document.body.appendChild(banner);
    render();
  }
 }
