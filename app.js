@@ -26,14 +26,16 @@ function closeMemberModal(){document.querySelector('#memberModal').hidden=true}
 async function saveMember(e){e.preventDefault();const btn=document.querySelector('#memberSaveBtn'),state=document.querySelector('#memberFormState'),memberKey=document.querySelector('#memberKey').value;const data={memberId:document.querySelector('#memberId').value.trim(),name:document.querySelector('#memberName').value.trim(),nickname:document.querySelector('#memberNickname').value.trim(),group:document.querySelector('#memberGroup').value.trim(),birth:document.querySelector('#memberBirth').value.trim(),phone:document.querySelector('#memberPhone').value.trim(),address:document.querySelector('#memberAddress').value.trim()};if(memberKey){const original=MEMBER_ROWS.find(x=>x.memberKey===memberKey);['birth','phone','address'].forEach(k=>{if(original&&original[k]===undefined)delete data[k]})}if(!data.memberId||!data.name){state.textContent='POKER FANS ID 與姓名為必填';state.className='form-state bad';return}btn.disabled=true;state.textContent='儲存中…';try{if(memberKey)await api('eight.members.update',{memberKey,patch:data});else await api('eight.members.create',{member:data});state.textContent='儲存成功';state.className='form-state good';closeMemberModal();boot()}catch(err){console.error(err);const msg={MEMBER_ID_ALREADY_EXISTS:'POKER FANS ID 已存在',MEMBER_ID_REQUIRED:'POKER FANS ID 為必填',MEMBER_NAME_REQUIRED:'姓名為必填',MEMBER_NOT_FOUND:'找不到此會員'}[err.message]||err.message;state.textContent='儲存失敗：'+msg;state.className='form-state bad'}finally{btn.disabled=false}}
 async function boot(){
  refreshBusinessDay();if(!CONFIG.apiUrl){setSync('資料庫：等待 Apps Script 部署');return}
+ let cached=[];try{cached=JSON.parse(localStorage.getItem('eightMemberCache')||'[]')}catch(_){}
+ if(cached.length){MEMBER_ROWS=cached;renderMembers();document.querySelector('#kMembers').textContent=money(cached.length);setSync('資料庫：同步中…')}
+ loadEvents();
  try{
-   setSync('資料庫：載入中…');
    const r=await api('eight.bootstrap');
    if(r.settings){CONFIG.businessStart=r.settings.businessStart||CONFIG.businessStart;CONFIG.businessEnd=r.settings.businessEnd||CONFIG.businessEnd;document.querySelector('#businessStart').value=CONFIG.businessStart;document.querySelector('#businessEnd').value=CONFIG.businessEnd}
    MEMBER_ROWS=r.members||[];try{localStorage.setItem('eightMemberCache',JSON.stringify(MEMBER_ROWS))}catch(_){}
-   renderMembers();document.querySelector('#kMembers').textContent=money(r.summary?.memberCount);document.querySelector('#kNewMembers').textContent=money(r.summary?.monthNewMembers);refreshBusinessDay();setSync('資料庫：已連線');loadEvents()
+   renderMembers();document.querySelector('#kMembers').textContent=money(r.summary?.memberCount);document.querySelector('#kNewMembers').textContent=money(r.summary?.monthNewMembers);refreshBusinessDay();setSync('資料庫：已連線')
  }catch(e){
-   console.error(e);let cached=[];try{cached=JSON.parse(localStorage.getItem('eightMemberCache')||'[]')}catch(_){}
+   console.error(e)
    if(cached.length){MEMBER_ROWS=cached;renderMembers();document.querySelector('#kMembers').textContent=money(cached.length);setSync('資料庫：暫時無法連線（顯示上次資料）',true)}
    else setSync('資料庫：連線失敗',true)
  }
@@ -63,11 +65,12 @@ document.querySelector('#createEventBtn').addEventListener('click',openEventModa
 document.querySelectorAll('[data-close-event]').forEach(x=>x.addEventListener('click',closeEventModal));
 document.querySelector('#eventLevel').addEventListener('change',e=>{const p=EVENT_PRESETS[e.target.value];if(p){document.querySelector('#eventBuyinTotal').value=p[0];document.querySelector('#eventBuyinAdmin').value=p[1];document.querySelector('#eventRebuyTotal').value=p[2];document.querySelector('#eventRebuyAdmin').value=p[3]}const n=document.querySelector('#eventName'),count=(window.EIGHT_EVENTS||[]).length+1;if(/^EPC#\d+\s/.test(n.value)||!n.value.trim())n.value='EPC#'+count+' '+(e.target.value==='custom'?'自訂':e.target.value)+' 限時錦標賽'});
 function renderEvents(rows=[]){window.EIGHT_EVENTS=rows;const el=document.querySelector('#eventList');if(!rows.length){el.className='empty';el.innerHTML='目前營業日尚無賽事';return}el.className='event-list';const stat=(k,v,moneyFmt=false)=>'<div class="event-stat"><small>'+k+'</small><b>'+(moneyFmt?money(v):esc(v??0))+'</b></div>';el.innerHTML=rows.map(x=>{const z=x.summary||{};return '<div class="event-row event-row-rich" data-event-id="'+esc(x.eventId)+'"><div class="event-main"><div><b>'+esc(x.name||'未命名賽事')+'</b><small>'+esc(x.businessDate||'')+' · '+esc(x.startTime||'')+' · '+esc(x.level||'自訂')+'</small></div><div class="event-actions"><button class="secondary enter-event" data-id="'+esc(x.eventId)+'">進入</button><button class="danger delete-event" data-id="'+esc(x.eventId)+'">刪除</button></div></div><div class="event-stats">'+stat('參賽人數',z.participants||0)+stat('重買人數',z.rebuyPeople||0)+stat('總組數',z.totalEntries||0)+stat('總買入',z.totalGross||0,true)+stat('早鳥',z.earlyDiscount||0,true)+stat('晚鳥',z.lateDiscount||0,true)+stat('重買優惠',z.rebuyDiscount||0,true)+stat('組數優惠',z.entryDiscount||0,true)+stat('其他優惠',z.otherDiscount||0,true)+stat('總獎金',z.prizePool||0,true)+stat('實收行政費',z.adminNet||0,true)+stat('JP',z.jp||0,true)+'</div></div>'}).join('')}
-let EVENTS_CACHE_DATE='';
+let EVENTS_CACHE_DATE='',EVENTS_LAST_SYNC=0;
 async function loadEvents(){
  const date=document.querySelector('#eventDate').value||businessDate(),cacheKey='eightEvents:'+date;
  if(EVENTS_CACHE_DATE!==date){EVENTS_CACHE_DATE=date;let cached=[];try{cached=JSON.parse(localStorage.getItem(cacheKey)||'[]')}catch(_){}renderEvents(cached)}
- try{const r=await api('eight.events.list',{businessDate:date}),rows=r.events||[];if(EVENTS_CACHE_DATE!==date)return;renderEvents(rows);try{localStorage.setItem(cacheKey,JSON.stringify(rows))}catch(_){}}
+ if(EVENTS_CACHE_DATE===date&&Date.now()-EVENTS_LAST_SYNC<30000&&(window.EIGHT_EVENTS||[]).length)return;
+ try{const r=await api('eight.events.list',{businessDate:date}),rows=r.events||[];if(EVENTS_CACHE_DATE!==date)return;renderEvents(rows);EVENTS_LAST_SYNC=Date.now();try{localStorage.setItem(cacheKey,JSON.stringify(rows))}catch(_){}}
  catch(err){if(err.message!=='UNKNOWN_ACTION')console.error(err)}
 }
 document.querySelector('#eventDate').addEventListener('change',loadEvents);
@@ -98,7 +101,7 @@ async function openEventWorkspace(id){
  document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';filterWorkspaceMembers('');renderWorkspace();
  loadWorkspacePlayers();
 }
-async function loadWorkspacePlayers(){if(!ACTIVE_EVENT)return;const id=ACTIVE_EVENT;try{const r=await api('eight.eventPlayers.list',{eventId:id});if(ACTIVE_EVENT!==id)return;WORKSPACE_PLAYERS=r.players||[];try{localStorage.setItem('eightEventPlayers:'+id,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value)}catch(err){if(ACTIVE_EVENT===id&&!WORKSPACE_PLAYERS.length)alert('載入玩家失敗：'+err.message)}}
+async function loadWorkspacePlayers(force=false){if(!ACTIVE_EVENT)return;const id=ACTIVE_EVENT;if(!force&&Date.now()-(WS_PLAYER_SYNC.get(id)||0)<30000&&WORKSPACE_PLAYERS.length)return;try{const r=await api('eight.eventPlayers.list',{eventId:id});if(ACTIVE_EVENT!==id)return;WORKSPACE_PLAYERS=r.players||[];WS_PLAYER_SYNC.set(id,Date.now());try{localStorage.setItem('eightEventPlayers:'+id,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value)}catch(err){if(ACTIVE_EVENT===id&&!WORKSPACE_PLAYERS.length)alert('載入玩家失敗：'+err.message)}}
 function filterWorkspaceMembers(q){
  q=memberSearchText(q);const joined=new Set(WORKSPACE_PLAYERS.map(x=>x.memberKey));
  const list=MEMBER_ROWS.filter(m=>!joined.has(m.memberKey)&&(!q||[m.memberId,m.name,m.nickname,m.group].some(v=>memberSearchText(v).includes(q)))).slice(0,30);
@@ -158,7 +161,7 @@ function returnToEventList(){
  if(eventId&&keys.length)Promise.allSettled(keys.map(key=>flushWorkspacePlayerForEvent(eventId,key))).catch(console.error)
 }
 document.querySelector('#backToEvents').onclick=returnToEventList;
-document.querySelector('#workspaceRefresh').addEventListener('click',loadWorkspacePlayers);
+document.querySelector('#workspaceRefresh').addEventListener('click',()=>loadWorkspacePlayers(true));
 document.querySelector('#workspaceMemberSearch').addEventListener('input',e=>filterWorkspaceMembers(e.target.value));
 document.querySelector('#workspaceMemberSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addWorkspacePlayer()}});
 document.querySelector('#workspaceAddPlayer').addEventListener('click',addWorkspacePlayer);
