@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>EIGHT POKER MANAGEMENT V2.0.3</title>
+<title>EIGHT POKER MANAGEMENT V2.0.4</title>
 <style>
 :root{--bg:#0b0f14;--card:#121922;--card2:#17212c;--text:#eef3f8;--muted:#91a0b2;--line:#263443;--accent:#d6b35a;--good:#49c27d;--bad:#ff6b6b}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif}
@@ -1819,7 +1819,7 @@ main{margin-left:0!important;width:auto!important;max-width:none!important;paddi
  }catch(_){document.documentElement.setAttribute('data-epc-theme','dark')}
 })();
 </script><body><script>window.EPC_RECOVERY_READONLY=false;</script>
-<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V2.0.3</span></div></header>
+<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V2.0.4</span></div></header>
 <nav id="nav">
 <button data-page="dashboard" class="active">總覽</button>
 <button data-page="members">會員</button>
@@ -2572,7 +2572,8 @@ function backupLocal(reason){
  }catch(err){ console.warn('backup failed',err); }
 }
 const CLOUD_RETRY_DELAYS=[0,1200];
-const CLOUD_TIMEOUT_MS=15000;
+const CLOUD_TIMEOUT_MS=45000;
+let eightFullLoadVerified_=false;
 const CLOUD_PROXY='https://script.googleusercontent.com';
 let cloudReconnectTimer=null;
 function sleep_(ms){return new Promise(r=>setTimeout(r,ms));}
@@ -2603,21 +2604,31 @@ async function cloudRequest_(kind,payload){
      throw err;
    }
  }
+ try{return await eightReadCloudJson_(payload);}
+ catch(err){cloudReady=false;scheduleCloudReconnect_();throw err;}
+}
+async function eightReadCloudJson_(action){
  let lastErr=null;
- for(let i=0;i<CLOUD_RETRY_DELAYS.length;i++){
-   if(CLOUD_RETRY_DELAYS[i])await sleep_(CLOUD_RETRY_DELAYS[i]);
+ for(let attempt=0;attempt<CLOUD_RETRY_DELAYS.length;attempt++){
+   if(CLOUD_RETRY_DELAYS[attempt])await sleep_(CLOUD_RETRY_DELAYS[attempt]);
+   const controller=new AbortController();
+   const timer=setTimeout(()=>controller.abort(),CLOUD_TIMEOUT_MS);
+   const slowTimer=setTimeout(()=>{
+     if(eightCloudLoadBusy_||eightMemberLoadBusy_)eightMemberStatus_('Google 回應較慢，仍在讀取會員，請稍候…');
+   },12000);
    try{
-     const r=await fetchWithTimeout_(CLOUD_API+'?action='+encodeURIComponent(payload)+'&_='+Date.now(),{cache:'no-store',redirect:'follow'});
-     if(!r.ok)throw new Error('HTTP '+r.status);
-     const j=await r.json();
-     if(!j.ok)throw new Error(j.error||'Cloud API error');
-     cloudReady=true;
-     return j;
-   }catch(err){ lastErr=err; }
+     const response=await fetch(CLOUD_API+'?action='+encodeURIComponent(action)+'&_='+Date.now(),{cache:'no-store',redirect:'follow',signal:controller.signal});
+     if(!response.ok)throw new Error('HTTP '+response.status);
+     // Keep the deadline active until the response body is fully read.
+     const result=await response.json();
+     if(!result.ok)throw new Error(result.error||'Google API 回傳失敗');
+     return result;
+   }catch(err){
+     lastErr=controller.signal.aborted?new Error('Google 回應逾時（等待 45 秒）'):err;
+     if(attempt+1<CLOUD_RETRY_DELAYS.length&&(eightCloudLoadBusy_||eightMemberLoadBusy_))eightMemberStatus_('Google 暫時未回應，正在自動重試（第 '+(attempt+2)+' 次）…');
+   }finally{clearTimeout(timer);clearTimeout(slowTimer);}
  }
- cloudReady=false;
- scheduleCloudReconnect_();
- throw lastErr||new Error('CLOUD_UNAVAILABLE');
+ throw lastErr||new Error('無法連線至 Google');
 }
 async function cloudGet(action){return cloudRequest_('GET',action);}
 async function cloudPost(payload){return cloudRequest_('POST',payload);}
@@ -2625,17 +2636,21 @@ function scheduleCloudReconnect_(){
  if(cloudReconnectTimer)return;
  cloudReconnectTimer=setTimeout(async()=>{
    cloudReconnectTimer=null;
-   if(cloudSaving)return scheduleCloudReconnect_();
+   if(cloudSaving||eightCloudLoadBusy_||eightMemberLoadBusy_)return scheduleCloudReconnect_();
    try{
      const ping=await cloudGet('ping');
+     // Reachability alone does not prove the member list or full database loaded.
+     if(!eightFullLoadVerified_){
+       setCloudState('● 連線已恢復，正在重新載入資料…');
+       await initializeCloud();
+       return;
+     }
      cloudReady=true;
-     // A ping only proves endpoint reachability; never write stale local data after a failed startup load.
-     if(!cloudBase){ setCloudState('⚠ API 已連線，但正式資料尚未載入',true); return; }
      if(localDirty){
        setCloudState('● 資料庫已恢復｜正在補同步…');
        await saveCloudNow(false);
      }else{
-       setCloudState('● 資料庫連線已恢復');
+       await eightReloadMembers_();
      }
    }catch(err){
      setCloudState('⚠ 資料庫暫時離線｜本機資料安全保存｜將自動重連',true);
@@ -2940,14 +2955,13 @@ function eightRenderMembers_(){
 }
 async function eightReloadMembers_(){
  if(eightCloudLoadBusy_||eightMemberLoadBusy_)return;
+ if(!eightFullLoadVerified_)return initializeCloud();
  eightMemberLoadBusy_=true;
  const button=$('eightMemberRetry');if(button)button.disabled=true;
  eightMemberStatus_('正在從 Google Sheet 讀取會員…');
  try{
    // This read must not mark an uninitialized full database ready for writes.
-   const response=await fetchWithTimeout_(CLOUD_API+'?action=load&_='+Date.now(),{cache:'no-store',redirect:'follow'});
-   if(!response.ok)throw new Error('HTTP '+response.status);
-   const result=await response.json();
+   const result=await eightReadCloudJson_('load');
    if(!result.ok||!Array.isArray(result.members))throw new Error(result.error||'會員 API 回傳格式不正確');
    const members=result.members.filter(m=>m&&String(m.id||'').trim());
    if(result.members.length&&!members.length)throw new Error('會員資料缺少會員編號');
@@ -2957,8 +2971,10 @@ async function eightReloadMembers_(){
    eightRenderMembers_();
    try{localStorage.setItem('epcV1',JSON.stringify(db));}catch(err){setCloudState('會員已載入，但此瀏覽器無法保存快取：'+err.message,true);}
    eightMemberStatus_('會員已載入 '+db.members.length+' 人｜'+new Date().toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei'}));
+   setCloudState(eightFullLoadVerified_?'● 會員資料讀取完成':'● 會員讀取完成，完整資料仍待載入');
  }catch(err){
-   eightMemberStatus_('會員讀取失敗：'+String(err&&err.message||err)+'。請按「重新讀取會員」。',true);
+   eightMemberStatus_('會員讀取失敗：'+String(err&&err.message||err)+'。已保留目前畫面資料，將自動重試。',true);
+   cloudReady=false;scheduleCloudReconnect_();
  }finally{eightMemberLoadBusy_=false;if(button)button.disabled=false;}
 }
 async function initializeCloud(){
@@ -2977,14 +2993,15 @@ async function initializeCloud(){
    if(!remote.settings.businessStart)remote.settings.businessStart='16:00';
    if(!remote.settings.businessEnd)remote.settings.businessEnd='07:00';
    for(const key of ['members','events','dailyAccounting','dailySettlementReports'])if(!Array.isArray(remote[key]))remote[key]=[];
-   db=remote;
+   const pendingLocal=localDirty&&cloudBase;
+   db=pendingLocal?preserveMembers_(db,mergeCloud3_(cloudBase,db,remote),res.members):remote;
    cloudRevision=Number(res.revision||0);
    setCloudBase_(remote);
-   localDirty=false;cloudPending=false;cloudReady=true;
+   localDirty=!!pendingLocal;cloudPending=!!pendingLocal;cloudReady=true;eightFullLoadVerified_=true;
    epcLastPersistSnapshot_=cloneCloud_(db);
    loaded=true;
    try{
-     localStorage.removeItem('epcLocalDirty');
+     if(localDirty)localStorage.setItem('epcLocalDirty','1');else localStorage.removeItem('epcLocalDirty');
      localStorage.setItem('epcCloudRevision',String(cloudRevision));
      localStorage.setItem('epcV1',JSON.stringify(db));
    }catch(err){console.warn('Cloud loaded but local cache unavailable',err);}
@@ -2995,11 +3012,13 @@ async function initializeCloud(){
  }catch(err){
    if(!loaded)cloudReady=false;
    console.error('Google startup load failed',err);
-   setCloudState('⚠ 完整資料載入失敗：'+String(err&&err.message||err)+'｜嘗試單獨讀取會員',true);
+   setCloudState('⚠ 資料讀取失敗：'+String(err&&err.message||err)+'｜保留目前資料，稍後自動重試',true);
+   eightMemberStatus_('會員尚未完成更新，將自動重試；也可按「重新讀取會員」。',true);
+   scheduleCloudReconnect_();
  }finally{
    eightCloudLoadBusy_=false;if(button)button.disabled=false;
  }
- if(!loaded||!db.members.length)await eightReloadMembers_();
+ if(loaded&&localDirty)scheduleCloudSave();
 }
 async function refreshFormMembers(saveAfter=true){
  if(epcEditLocked_())return false;
@@ -6508,5 +6527,6 @@ async function epcShowRecoveryAudit_(){
  }catch(e){alert("唯讀盤點失敗："+String(e&&e.message||e));}
 }
 </script></body></html>
+
 
 
