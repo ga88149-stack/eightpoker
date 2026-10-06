@@ -13,6 +13,7 @@ const EIGHT_SETTINGS_SHEET='EPC_系統設定';
 function eightPokerApi_(req){
   try{
     switch(String(req.action||'')){
+      case 'eight.ping': return {ok:true,service:'Eight Poker API',version:'V1.5'};
       case 'eight.bootstrap': return eightBootstrap_();
       case 'eight.members.list': return {ok:true,members:eightListMembers_()};
       case 'eight.members.create': return {ok:true,member:eightCreateMember_(req.member||{})};
@@ -42,7 +43,7 @@ function eightEnsureSheet_(name,headers){
   else {const width=Math.max(sh.getLastColumn(),headers.length),cur=sh.getRange(1,1,1,width).getDisplayValues()[0];headers.forEach((x,i)=>{if(!cur[i])sh.getRange(1,i+1).setValue(x)})}
   sh.setFrozenRows(1);return sh;
 }
-function eightMeta_(){return eightEnsureSheet_(EIGHT_META_SHEET,['MEMBER_KEY','POKER_FANS_ID','姓名快照','綽號','分帳群組','會員狀態','建立時間','更新時間'])}
+function eightMeta_(){const sh=eightDb_().getSheetByName(EIGHT_META_SHEET);if(!sh)throw new Error('META_SHEET_MISSING');return sh}
 function eightEvents_(){const sh=eightDb_().getSheetByName(EIGHT_EVENT_SHEET);if(!sh)throw new Error('EVENT_SHEET_MISSING');return sh}
 function eightPlayers_(){const sh=eightDb_().getSheetByName(EIGHT_PLAYER_SHEET);if(!sh)throw new Error('PLAYER_SHEET_MISSING');return sh}
 function eightSettings_(){
@@ -66,7 +67,17 @@ function eightMetaMap_(){
   sh.getRange(2,1,sh.getLastRow()-1,8).getDisplayValues().forEach((r,i)=>{const id=String(r[1]||'').trim();if(id&&!map.has(id))map.set(id,{row:i+2,key:r[0],nickname:r[3]||'',group:r[4]||'',status:r[5]||'active'})});return map
 }
 function eightListMembers_(){
-  const s=eightMemberSource_(),meta=eightMetaMap_();return s.v.slice(1).map((r,i)=>{if(!r.some(Boolean))return null;const id=s.c.id>=0?String(r[s.c.id]||'').trim():'';if(!id)return null;const m=meta.get(id);if(!m)return null;return {memberKey:m.key,memberId:id,name:s.c.name>=0?r[s.c.name]:'',nickname:m.nickname,group:m.group,birth:s.c.birth>=0?r[s.c.birth]:'',phone:s.c.phone>=0?r[s.c.phone]:'',address:s.c.address>=0?r[s.c.address]:'',timestamp:s.c.ts>=0?r[s.c.ts]:'',status:m.status,eventCount:0,totalEntries:0,pnl:0,spendShare:'',lastVisit:''}}).filter(x=>x&&x.status!=='inactive')
+  const ss=eightDb_(),src=ss.getSheetByName(EIGHT_MEMBER_SHEET),metaSh=ss.getSheetByName(EIGHT_META_SHEET);
+  if(!src)throw new Error('MEMBER_SHEET_NOT_FOUND');if(!metaSh)throw new Error('META_SHEET_MISSING');
+  const sv=src.getDataRange().getDisplayValues(),h=sv[0]||[];
+  const c={ts:eightIdx_(h,['Timestamp','時間戳記']),name:eightIdx_(h,['姓名']),birth:eightIdx_(h,['出生年月日']),phone:eightIdx_(h,['手機號碼']),id:eightIdx_(h,['POKER FANS ID','POKERFANS ID']),address:eightIdx_(h,['地址'])};
+  if(c.id<0||c.name<0)throw new Error('MEMBER_HEADER_MISSING');
+  const mv=metaSh.getLastRow()>1?metaSh.getRange(2,1,metaSh.getLastRow()-1,8).getDisplayValues():[],meta=new Map();
+  mv.forEach(r=>{const id=String(r[1]||'').trim();if(id&&!meta.has(id))meta.set(id,{key:r[0],nickname:r[3]||'',group:r[4]||'',status:r[5]||'active'})});
+  const out=[];
+  for(let i=1;i<sv.length;i++){const r=sv[i],id=String(r[c.id]||'').trim();if(!id)continue;const m=meta.get(id);if(!m||m.status==='inactive')continue;
+    out.push({memberKey:m.key,memberId:id,name:r[c.name]||'',nickname:m.nickname,group:m.group,birth:c.birth>=0?r[c.birth]:'',phone:c.phone>=0?r[c.phone]:'',address:c.address>=0?r[c.address]:'',timestamp:c.ts>=0?r[c.ts]:'',status:m.status,eventCount:0,totalEntries:0,pnl:0,spendShare:'',lastVisit:''});
+  }return out
 }
 function eightGenerateMemberId_(source){
   const used=new Set(source.v.slice(1).map(r=>source.c.id>=0?String(r[source.c.id]||'').trim().toUpperCase():''));
@@ -147,8 +158,9 @@ function eightUpdateEventPlayer_(eventId,key,p){
 }
 function eightDeleteEventPlayer_(eventId,key){const lock=LockService.getScriptLock();if(!lock.tryLock(3000))throw new Error('SYSTEM_BUSY_RETRY');try{const f=eightFindPlayerRow_(eventId,key);f.sh.deleteRow(f.row);SpreadsheetApp.flush();return {deleted:true}}finally{lock.releaseLock()}}
 function eightBootstrap_(){
-  const members=eightListMembers_(),settings=eightSettings_(),now=new Date(),monthNew=members.filter(m=>{const d=new Date(m.timestamp);return !isNaN(d)&&d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()}).length;
-  return {ok:true,settings,members,summary:{memberCount:members.length,monthNewMembers:monthNew}}
+  const members=eightListMembers_(),settings=eightSettings_(),now=new Date();let monthNew=0;
+  members.forEach(m=>{const d=new Date(m.timestamp);if(!isNaN(d)&&d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth())monthNew++});
+  return {ok:true,settings:settings,members:members,summary:{memberCount:members.length,monthNewMembers:monthNew},apiVersion:'V1.5'}
 }
 function eightSaveAllEventPlayers_(eventId,players){
   const lock=LockService.getScriptLock();lock.waitLock(15000);try{
