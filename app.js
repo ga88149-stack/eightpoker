@@ -1,0 +1,11 @@
+const pages={dashboard:'總覽',members:'會員資料',events:'賽事管理',settlement:'分帳報表',accounting:'帳務管理',activities:'活動專區',devices:'設備管理',settings:'系統設定'};
+const pad=n=>String(n).padStart(2,'0');
+function localISO(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function businessDate(now=new Date(),start='16:00',end='07:00'){const [sh,sm]=start.split(':').map(Number),[eh,em]=end.split(':').map(Number);const mins=now.getHours()*60+now.getMinutes(),s=sh*60+sm,e=eh*60+em;const d=new Date(now);if(e<s&&mins<e)d.setDate(d.getDate()-1);return localISO(d)}
+function refreshBusinessDay(){const s=document.querySelector('#businessStart')?.value||'16:00',e=document.querySelector('#businessEnd')?.value||'07:00';const d=businessDate(new Date(),s,e);document.querySelector('#businessDayLabel').textContent='營業日 '+d+' · '+s+'–翌日 '+e;document.querySelector('#todayDate').textContent=d;document.querySelector('#globalDate').value=d}
+document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelector('#'+b.dataset.page).classList.add('active');document.querySelector('#pageTitle').textContent=pages[b.dataset.page]}));
+document.querySelector('#themeBtn').addEventListener('click',()=>{const dark=document.body.dataset.theme==='dark';document.body.dataset.theme=dark?'light':'dark';document.querySelector('#themeBtn').textContent=dark?'☾ 深色模式':'☀ 一般模式';localStorage.setItem('eightTheme',document.body.dataset.theme)});
+document.body.dataset.theme=localStorage.getItem('eightTheme')||'dark';
+document.querySelector('#businessStart').addEventListener('change',refreshBusinessDay);document.querySelector('#businessEnd').addEventListener('change',refreshBusinessDay);
+const now=new Date(),first=new Date(now.getFullYear(),now.getMonth(),1);document.querySelector('#rangeFrom').value=localISO(first);document.querySelector('#rangeTo').value=localISO(now);refreshBusinessDay();
+document.querySelector('#refreshBtn').addEventListener('click',()=>location.reload());
