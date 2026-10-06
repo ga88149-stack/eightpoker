@@ -27,29 +27,28 @@ async function saveMember(e){e.preventDefault();const btn=document.querySelector
 async function boot(force=false){
  refreshBusinessDay();if(!CONFIG.apiUrl){setSync('資料庫：等待 Apps Script 部署');return}
  let cached=[];try{cached=JSON.parse(localStorage.getItem('eightMemberCache')||'[]')}catch(_){}
- if(cached.length){MEMBER_ROWS=cached;renderMembers();document.querySelector('#kMembers').textContent=money(cached.length)}
  let settings={};try{settings=JSON.parse(localStorage.getItem('eightSettingsCache')||'{}')}catch(_){}
  if(settings.businessStart)CONFIG.businessStart=settings.businessStart;if(settings.businessEnd)CONFIG.businessEnd=settings.businessEnd;
  document.querySelector('#businessStart').value=CONFIG.businessStart;document.querySelector('#businessEnd').value=CONFIG.businessEnd;refreshBusinessDay();
- loadEvents();
- const last=Number(localStorage.getItem('eightLastFullSync')||0),fresh=Date.now()-last<300000;
- if(!force&&cached.length&&fresh){setSync('資料庫：已連線');return}
- setSync(cached.length?'資料庫：背景同步中…':'資料庫：載入中…');
+ if(cached.length){MEMBER_ROWS=cached;renderMembers();document.querySelector('#kMembers').textContent=money(cached.length);setSync('資料庫：已連線')}
+ loadEvents(false);
+ if(!force&&cached.length)return;
+ setSync(cached.length?'資料庫：同步中…':'資料庫：首次載入中…');
  try{
    const r=await api('eight.bootstrap');
    if(r.settings){CONFIG.businessStart=r.settings.businessStart||CONFIG.businessStart;CONFIG.businessEnd=r.settings.businessEnd||CONFIG.businessEnd;localStorage.setItem('eightSettingsCache',JSON.stringify(r.settings));document.querySelector('#businessStart').value=CONFIG.businessStart;document.querySelector('#businessEnd').value=CONFIG.businessEnd}
-   MEMBER_ROWS=r.members||[];localStorage.setItem('eightMemberCache',JSON.stringify(MEMBER_ROWS));localStorage.setItem('eightLastFullSync',String(Date.now()));
+   MEMBER_ROWS=r.members||[];localStorage.setItem('eightMemberCache',JSON.stringify(MEMBER_ROWS));
    renderMembers();document.querySelector('#kMembers').textContent=money(r.summary?.memberCount);document.querySelector('#kNewMembers').textContent=money(r.summary?.monthNewMembers);refreshBusinessDay();setSync('資料庫：已連線')
  }catch(e){console.error(e);setSync(cached.length?'資料庫：使用本機資料':'資料庫：連線失敗',true)}
 }
 function goPage(page){document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===page));const t=document.querySelector('#pageTitle');if(t&&pages[page])t.textContent=pages[page]}
-document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>{goPage(b.dataset.page);if(b.dataset.page==='events')loadEvents()}));
+document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>{goPage(b.dataset.page);if(b.dataset.page==='events')showCachedEvents()}));
 document.querySelector('#themeBtn').addEventListener('click',()=>{const dark=document.body.dataset.theme==='dark';document.body.dataset.theme=dark?'light':'dark';document.querySelector('#themeBtn').textContent=dark?'☾ 深色模式':'☀ 一般模式';localStorage.setItem('eightTheme',document.body.dataset.theme)});
 document.body.dataset.theme=localStorage.getItem('eightTheme')||'dark';
 document.querySelector('#businessStart').addEventListener('change',refreshBusinessDay);document.querySelector('#businessEnd').addEventListener('change',refreshBusinessDay);
 document.querySelector('#saveBusinessHours').addEventListener('click',async()=>{const state=document.querySelector('#businessSaveState');const start=document.querySelector('#businessStart').value,end=document.querySelector('#businessEnd').value;state.textContent='儲存中…';try{const r=await api('eight.settings.update',{settings:{businessStart:start,businessEnd:end}});CONFIG.businessStart=r.settings.businessStart;CONFIG.businessEnd=r.settings.businessEnd;localStorage.removeItem('eightBusinessStart');localStorage.removeItem('eightBusinessEnd');refreshBusinessDay();state.textContent='已同步到資料庫'}catch(err){state.textContent='儲存失敗：'+err.message}setTimeout(()=>state.textContent='',2200)});
 const now=new Date(),first=new Date(now.getFullYear(),now.getMonth(),1);document.querySelector('#rangeFrom').value=localISO(first);document.querySelector('#rangeTo').value=localISO(now);
-document.querySelector('#refreshBtn').addEventListener('click',()=>boot(true));boot(false);
+document.querySelector('#refreshBtn').addEventListener('click',async()=>{await boot(true);await loadEvents(true)});boot(false);
 document.querySelector('#addMemberBtn').addEventListener('click',()=>openMemberModal());
 document.querySelectorAll('[data-close-member]').forEach(x=>x.addEventListener('click',closeMemberModal));
 document.querySelector('#memberForm').addEventListener('submit',saveMember);
@@ -68,15 +67,20 @@ document.querySelectorAll('[data-close-event]').forEach(x=>x.addEventListener('c
 document.querySelector('#eventLevel').addEventListener('change',e=>{const p=EVENT_PRESETS[e.target.value];if(p){document.querySelector('#eventBuyinTotal').value=p[0];document.querySelector('#eventBuyinAdmin').value=p[1];document.querySelector('#eventRebuyTotal').value=p[2];document.querySelector('#eventRebuyAdmin').value=p[3]}const n=document.querySelector('#eventName'),count=(window.EIGHT_EVENTS||[]).length+1;if(/^EPC#\d+\s/.test(n.value)||!n.value.trim())n.value='EPC#'+count+' '+(e.target.value==='custom'?'自訂':e.target.value)+' 限時錦標賽'});
 function renderEvents(rows=[]){window.EIGHT_EVENTS=rows;const el=document.querySelector('#eventList');if(!rows.length){el.className='empty';el.innerHTML='目前營業日尚無賽事';return}el.className='event-list';const stat=(k,v,moneyFmt=false)=>'<div class="event-stat"><small>'+k+'</small><b>'+(moneyFmt?money(v):esc(v??0))+'</b></div>';el.innerHTML=rows.map(x=>{const z=x.summary||{};return '<div class="event-row event-row-rich" data-event-id="'+esc(x.eventId)+'"><div class="event-main"><div><b>'+esc(x.name||'未命名賽事')+'</b><small>'+esc(x.businessDate||'')+' · '+esc(x.startTime||'')+' · '+esc(x.level||'自訂')+'</small></div><div class="event-actions"><button class="secondary enter-event" data-id="'+esc(x.eventId)+'">進入</button><button class="danger delete-event" data-id="'+esc(x.eventId)+'">刪除</button></div></div><div class="event-stats">'+stat('參賽人數',z.participants||0)+stat('重買人數',z.rebuyPeople||0)+stat('總組數',z.totalEntries||0)+stat('總買入',z.totalGross||0,true)+stat('早鳥',z.earlyDiscount||0,true)+stat('晚鳥',z.lateDiscount||0,true)+stat('重買優惠',z.rebuyDiscount||0,true)+stat('組數優惠',z.entryDiscount||0,true)+stat('其他優惠',z.otherDiscount||0,true)+stat('總獎金',z.prizePool||0,true)+stat('實收行政費',z.adminNet||0,true)+stat('JP',z.jp||0,true)+'</div></div>'}).join('')}
 let EVENTS_CACHE_DATE='',EVENTS_LAST_SYNC=0;
-async function loadEvents(){
+function showCachedEvents(){
  const date=document.querySelector('#eventDate').value||businessDate(),cacheKey='eightEvents:'+date;
- if(EVENTS_CACHE_DATE!==date){EVENTS_CACHE_DATE=date;let cached=[];try{cached=JSON.parse(localStorage.getItem(cacheKey)||'[]')}catch(_){}renderEvents(cached)}
- if(EVENTS_CACHE_DATE===date&&Date.now()-EVENTS_LAST_SYNC<30000&&(window.EIGHT_EVENTS||[]).length)return;
+ if(EVENTS_CACHE_DATE===date&&(window.EIGHT_EVENTS||[]).length){renderEvents(window.EIGHT_EVENTS);return true}
+ let cached=[];try{cached=JSON.parse(localStorage.getItem(cacheKey)||'[]')}catch(_){}
+ EVENTS_CACHE_DATE=date;renderEvents(cached);return cached.length>0
+}
+async function loadEvents(force=false){
+ const date=document.querySelector('#eventDate').value||businessDate(),cacheKey='eightEvents:'+date,hadCache=showCachedEvents();
+ if(!force&&hadCache)return;
  try{const r=await api('eight.events.list',{businessDate:date}),rows=r.events||[];if(EVENTS_CACHE_DATE!==date)return;renderEvents(rows);EVENTS_LAST_SYNC=Date.now();try{localStorage.setItem(cacheKey,JSON.stringify(rows))}catch(_){}}
  catch(err){if(err.message!=='UNKNOWN_ACTION')console.error(err)}
 }
-document.querySelector('#eventDate').addEventListener('change',loadEvents);
-document.querySelector('#eventForm').addEventListener('submit',async e=>{e.preventDefault();const state=document.querySelector('#eventFormState');const level=document.querySelector('#eventLevel').value,count=(window.EIGHT_EVENTS||[]).length+1;let eventName=document.querySelector('#eventName').value.trim();if(!eventName)eventName='EPC#'+count+' '+(level==='custom'?'自訂':level)+' 限時錦標賽';const buyinTotal=Number(document.querySelector('#eventBuyinTotal').value||0),buyinAdmin=Number(document.querySelector('#eventBuyinAdmin').value||0),rebuyTotal=Number(document.querySelector('#eventRebuyTotal').value||0),rebuyAdmin=Number(document.querySelector('#eventRebuyAdmin').value||0);const event={name:eventName,businessDate:document.querySelector('#eventBusinessDate').value,startTime:document.querySelector('#eventStartTime').value,regClose:document.querySelector('#eventRegClose').value,level,buyin:Math.max(0,buyinTotal-buyinAdmin),fee:buyinAdmin,buyinTotal,buyinAdmin,rebuyTotal,rebuyAdmin,freeAdminFrom:Number(document.querySelector('#eventFreeAdminFrom').value||11),jpRate:Number(document.querySelector('#eventJP').value||0),icmRate:Number(document.querySelector('#eventICMRate').value||0),icmRound:Number(document.querySelector('#eventICMRound').value||100)};state.textContent='建立中…';try{const created=await api('eight.events.create',{event});state.textContent='建立成功';state.className='form-state good';document.querySelector('#eventDate').value=event.businessDate;closeEventModal();if(created.event){window.EIGHT_EVENTS=[...(window.EIGHT_EVENTS||[]),created.event];renderEvents(window.EIGHT_EVENTS)}loadEvents()}catch(err){state.textContent='建立失敗：'+err.message;state.className='form-state bad'}});
+document.querySelector('#eventDate').addEventListener('change',()=>loadEvents(false));
+document.querySelector('#eventForm').addEventListener('submit',async e=>{e.preventDefault();const state=document.querySelector('#eventFormState');const level=document.querySelector('#eventLevel').value,count=(window.EIGHT_EVENTS||[]).length+1;let eventName=document.querySelector('#eventName').value.trim();if(!eventName)eventName='EPC#'+count+' '+(level==='custom'?'自訂':level)+' 限時錦標賽';const buyinTotal=Number(document.querySelector('#eventBuyinTotal').value||0),buyinAdmin=Number(document.querySelector('#eventBuyinAdmin').value||0),rebuyTotal=Number(document.querySelector('#eventRebuyTotal').value||0),rebuyAdmin=Number(document.querySelector('#eventRebuyAdmin').value||0);const event={name:eventName,businessDate:document.querySelector('#eventBusinessDate').value,startTime:document.querySelector('#eventStartTime').value,regClose:document.querySelector('#eventRegClose').value,level,buyin:Math.max(0,buyinTotal-buyinAdmin),fee:buyinAdmin,buyinTotal,buyinAdmin,rebuyTotal,rebuyAdmin,freeAdminFrom:Number(document.querySelector('#eventFreeAdminFrom').value||11),jpRate:Number(document.querySelector('#eventJP').value||0),icmRate:Number(document.querySelector('#eventICMRate').value||0),icmRound:Number(document.querySelector('#eventICMRound').value||100)};state.textContent='建立中…';try{const created=await api('eight.events.create',{event});state.textContent='建立成功';state.className='form-state good';document.querySelector('#eventDate').value=event.businessDate;closeEventModal();if(created.event){window.EIGHT_EVENTS=[...(window.EIGHT_EVENTS||[]),created.event];renderEvents(window.EIGHT_EVENTS);try{localStorage.setItem('eightEvents:'+event.businessDate,JSON.stringify(window.EIGHT_EVENTS))}catch(_){}}}catch(err){state.textContent='建立失敗：'+err.message;state.className='form-state bad'}});
 let ACTIVE_EVENT=null,EVENT_PLAYERS=[];
 function openPlayersModal(eventId){ACTIVE_EVENT=eventId;const ev=(window.EIGHT_EVENTS||[]).find(x=>x.eventId===eventId);document.querySelector('#eventPlayersTitle').textContent=ev?.name||'賽事玩家';document.querySelector('#eventPlayersMeta').textContent=(ev?.businessDate||'')+' '+(ev?.startTime||'');document.querySelector('#eventMemberSearch').value='';document.querySelector('#eventMemberMatches').innerHTML='';document.querySelector('#eventPlayersModal').hidden=false;loadEventPlayers()}
 function closePlayersModal(){document.querySelector('#eventPlayersModal').hidden=true;ACTIVE_EVENT=null}
@@ -101,9 +105,9 @@ async function openEventWorkspace(id){
  showOnlyPage('eventWorkspace');document.querySelector('#workspaceTitle').textContent=WORKSPACE_EVENT.name;
  document.querySelector('#workspaceMeta').textContent=(WORKSPACE_EVENT.businessDate||'')+' · '+(WORKSPACE_EVENT.startTime||'')+' · '+(WORKSPACE_EVENT.level||'');
  document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';filterWorkspaceMembers('');renderWorkspace();
- loadWorkspacePlayers();
+ if(!WORKSPACE_PLAYERS.length)loadWorkspacePlayers(true);
 }
-async function loadWorkspacePlayers(force=false){if(!ACTIVE_EVENT)return;const id=ACTIVE_EVENT;if(!force&&Date.now()-(WS_PLAYER_SYNC.get(id)||0)<30000&&WORKSPACE_PLAYERS.length)return;try{const r=await api('eight.eventPlayers.list',{eventId:id});if(ACTIVE_EVENT!==id)return;WORKSPACE_PLAYERS=r.players||[];WS_PLAYER_SYNC.set(id,Date.now());try{localStorage.setItem('eightEventPlayers:'+id,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value)}catch(err){if(ACTIVE_EVENT===id&&!WORKSPACE_PLAYERS.length)alert('載入玩家失敗：'+err.message)}}
+async function loadWorkspacePlayers(force=false){if(!ACTIVE_EVENT)return;const id=ACTIVE_EVENT;if(!force&&WORKSPACE_PLAYERS.length)return;try{const r=await api('eight.eventPlayers.list',{eventId:id});if(ACTIVE_EVENT!==id)return;WORKSPACE_PLAYERS=r.players||[];WS_PLAYER_SYNC.set(id,Date.now());try{localStorage.setItem('eightEventPlayers:'+id,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}renderWorkspace();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value)}catch(err){if(ACTIVE_EVENT===id&&!WORKSPACE_PLAYERS.length)alert('載入玩家失敗：'+err.message)}}
 function filterWorkspaceMembers(q){
  q=memberSearchText(q);const joined=new Set(WORKSPACE_PLAYERS.map(x=>x.memberKey));
  const list=MEMBER_ROWS.filter(m=>!joined.has(m.memberKey)&&(!q||[m.memberId,m.name,m.nickname,m.group].some(v=>memberSearchText(v).includes(q)))).slice(0,30);
@@ -152,14 +156,9 @@ async function addWorkspacePlayer(){
    try{localStorage.setItem('eightEventPlayers:'+eventId,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){};
  }catch(err){
    btn.disabled=false;
-   const eventId=ACTIVE_EVENT;
-   api('eight.eventPlayers.list',{eventId}).then(r=>{
-     if(ACTIVE_EVENT!==eventId)return;
-     const rows=r.players||[],committed=rows.some(x=>x.memberKey===key);
-     WORKSPACE_PLAYERS=rows;renderWorkspace();filterWorkspaceMembers('');
-     try{localStorage.setItem('eightEventPlayers:'+eventId,JSON.stringify(rows))}catch(_){}
-     if(!committed)alert('加入失敗：'+err.message)
-   }).catch(()=>alert('加入狀態尚未確認，請稍後按重新整理'));
+   WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();syncWorkspaceEventSummaryLocal();filterWorkspaceMembers('');
+   try{localStorage.setItem('eightEventPlayers:'+ACTIVE_EVENT,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}
+   alert('加入失敗：'+err.message);
  }
 }
 document.querySelector('#eventList').addEventListener('click',e=>{
@@ -202,7 +201,7 @@ document.querySelector('#workspacePlayerRows').addEventListener('change',e=>{
  else if(e.target.classList.contains('ws-chips')){p.chips=Number(e.target.value||0);patch.chips=p.chips}else return;
  renderWorkspace();syncWorkspaceEventSummaryLocal();try{localStorage.setItem('eightEventPlayers:'+ACTIVE_EVENT,JSON.stringify(WORKSPACE_PLAYERS))}catch(_){}queueWorkspacePlayerSave(key,patch)
 });
-document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];if(WS_SAVE_TIMERS.has(key))clearTimeout(WS_SAVE_TIMERS.get(key));WS_SAVE_TIMERS.delete(key);WS_PENDING_PATCH.delete(key);WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();syncWorkspaceEventSummaryLocal();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key}).then(()=>{loadEvents()}).catch(err=>{WORKSPACE_PLAYERS=old;renderWorkspace();syncWorkspaceEventSummaryLocal();alert('移除失敗：'+err.message)})});
+document.querySelector('#workspacePlayerRows').addEventListener('click',async e=>{const b=e.target.closest('.ws-remove');if(!b)return;const tr=b.closest('tr[data-key]');if(!confirm('確定移除此玩家？'))return;const key=tr.dataset.key,old=[...WORKSPACE_PLAYERS];if(WS_SAVE_TIMERS.has(key))clearTimeout(WS_SAVE_TIMERS.get(key));WS_SAVE_TIMERS.delete(key);WS_PENDING_PATCH.delete(key);WORKSPACE_PLAYERS=WORKSPACE_PLAYERS.filter(x=>x.memberKey!==key);renderWorkspace();syncWorkspaceEventSummaryLocal();filterWorkspaceMembers(document.querySelector('#workspaceMemberSearch').value);api('eight.eventPlayers.delete',{eventId:ACTIVE_EVENT,memberKey:key}).then(()=>{}).catch(err=>{WORKSPACE_PLAYERS=old;renderWorkspace();syncWorkspaceEventSummaryLocal();alert('移除失敗：'+err.message)})});
 document.querySelector('#workspaceSettle').addEventListener('click',async()=>{
  const btn=document.querySelector('#workspaceSettle');btn.disabled=true;
  try{
