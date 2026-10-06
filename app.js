@@ -78,7 +78,7 @@ function eventCalcPlayer(p,e){
  const gross=buyin*Number(e.buyinTotal||0)+rebuy*Number(e.rebuyTotal||0);
  const early=Number(p.earlyDiscount||0),late=Number(p.lateDiscount||0),other=Number(p.otherDiscount||0);
  const rd=Math.max(0,rebuy)*Number(e.rebuyAdmin||0)/2;
- const overbuy=Math.max(0,groups-10)*Number(e.rebuyAdmin||0)/2;
+ const overbuy=Math.max(0,groups-Math.max(0,Number(e.freeAdminFrom||11)-1))*Number(e.rebuyAdmin||0)/2;
  const discount=early+late+rd+overbuy+other;
  return {buyin,rebuy,groups,gross,early,late,rd,overbuy,other,discount,paid:Math.max(0,gross-discount)};
 }
@@ -109,17 +109,25 @@ function renderWorkspace(){
  document.querySelector('#workspacePlayerTotals').innerHTML='<tr><td colspan="2">合計</td><td>'+totals.buyin+'</td><td>'+totals.rebuy+'</td><td>'+totals.groups+'</td><td>'+money(totals.early)+'</td><td>'+money(totals.late)+'</td><td>'+money(totals.rd)+'</td><td>'+money(totals.groupDiscount)+'</td><td>'+money(totals.other)+'</td><td>'+money(totals.paid)+'</td><td colspan="3"></td></tr>';
  const adminGross=totals.buyin*Number(e.buyinAdmin||0)+totals.rebuy*Number(e.rebuyAdmin||0),discounts=totals.early+totals.late+totals.rd+totals.overbuy+totals.other;
  const prizeBase=totals.buyin*Math.max(0,Number(e.buyinTotal||0)-Number(e.buyinAdmin||0))+totals.rebuy*Math.max(0,Number(e.rebuyTotal||0)-Number(e.rebuyAdmin||0));
- const jp=Math.floor(prizeBase*Number(e.jpRate||0)/100),unit=Math.max(1,Number(e.icmRound||100)),prize=Math.floor((prizeBase*(1-Number(e.icmRate||0)/100))/unit)*unit;
+ const jp=Math.floor(adminGross*Number(e.jpRate||0)/100),unit=Math.max(1,Number(e.icmRound||100)),prize=Math.floor((prizeBase*(1-Number(e.icmRate||0)/100))/unit)*unit;
  const k=[['參賽人數',WORKSPACE_PLAYERS.length],['重買人數',WORKSPACE_PLAYERS.filter(p=>Number(p.rebuy||0)>0).length],['總組數',totals.groups],['總買入',money(totals.gross)],['總優惠',money(discounts)],['總獎金',money(prize)],['實收行政費',money(Math.max(0,adminGross-discounts))],['JP',money(jp)]];
  document.querySelector('#workspaceKpis').innerHTML=k.map(x=>'<div class="card event-kpi"><small>'+x[0]+'</small><b>'+x[1]+'</b></div>').join('');
 }
 async function addWorkspacePlayer(){
  const key=document.querySelector('#workspaceMemberSelect').value;if(!key)return;
- const btn=document.querySelector('#workspaceAddPlayer');btn.disabled=true;try{const m=MEMBER_ROWS.find(x=>x.memberKey===key);const group=document.querySelector('#workspaceGroup').value.trim()||m?.group||'';
- if(m&&!WORKSPACE_PLAYERS.some(x=>x.memberKey===key)){WORKSPACE_PLAYERS.push({memberKey:key,memberId:m.memberId,name:m.name,buyin:1,rebuy:0,group,chips:0});renderWorkspace()}
- await api('eight.eventPlayers.add',{eventId:ACTIVE_EVENT,memberKey:key});if(group)await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch:{group}});
- document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';await loadWorkspacePlayers();filterWorkspaceMembers('');loadEvents();
- }catch(err){await loadWorkspacePlayers();alert('加入失敗：'+err.message)}finally{btn.disabled=false}
+ const btn=document.querySelector('#workspaceAddPlayer'),m=MEMBER_ROWS.find(x=>x.memberKey===key),group=document.querySelector('#workspaceGroup').value.trim()||m?.group||'';btn.disabled=true;
+ try{
+   if(m&&!WORKSPACE_PLAYERS.some(x=>x.memberKey===key)){WORKSPACE_PLAYERS.push({memberKey:key,memberId:m.memberId,name:m.name,buyin:1,rebuy:0,group,chips:0});renderWorkspace()}
+   await api('eight.eventPlayers.add',{eventId:ACTIVE_EVENT,memberKey:key});
+   if(group)await api('eight.eventPlayers.update',{eventId:ACTIVE_EVENT,memberKey:key,patch:{group}});
+   document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';await loadWorkspacePlayers();filterWorkspaceMembers('');loadEvents();
+ }catch(err){
+   await loadWorkspacePlayers();
+   const committed=WORKSPACE_PLAYERS.some(x=>x.memberKey===key);
+   if(committed){
+     document.querySelector('#workspaceMemberSearch').value='';document.querySelector('#workspaceGroup').value='';filterWorkspaceMembers('');loadEvents();
+   }else alert('加入失敗：'+err.message)
+ }finally{btn.disabled=false}
 }
 document.querySelector('#eventList').addEventListener('click',e=>{const b=e.target.closest('.enter-event');if(b){openEventWorkspace(b.dataset.id)}});
 document.querySelector('#backToEvents').addEventListener('click',async()=>{for(const key of [...WS_PENDING_PATCH.keys()])await flushWorkspacePlayer(key);showOnlyPage('events');loadEvents()});
