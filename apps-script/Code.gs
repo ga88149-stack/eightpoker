@@ -322,12 +322,15 @@ function loadRevision_() {
 
 
 function loadData_() {
-
-
+  // Fast path: one cache entry avoids repeatedly rebuilding the same ~240KB EPC_DB
+  // and re-reading/merging the entire member form on every page load.
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('EPC_LOAD_V2');
+  if (cached) {
+    try { return JSON.parse(cached); } catch (ignore) {}
+  }
 
   const sh = getDataSheet_();
-
-
 
   const state = readState_(sh);
 
@@ -393,42 +396,21 @@ function loadData_() {
 
 
 
-  return {
-
-
-
+  const response = {
     ok: true,
-
-
-
     data: data,
-
-
-
     members: Array.isArray(data.members) ? data.members : [],
-
-
-
     revision: state.revision,
-
-
-
     updatedAt: state.updatedAt,
-
-
-
     writeId: state.writeId,
-
-
-
     chunks: state.chunkCount
-
-
-
   };
-
-
-
+  // Apps Script cache has a per-value size ceiling. Cache only when payload fits.
+  try {
+    const txt = JSON.stringify(response);
+    if (txt.length < 95000) cache.put('EPC_LOAD_V2', txt, 60);
+  } catch (ignore) {}
+  return response;
 }
 
 
@@ -442,18 +424,12 @@ function readState_(sh) {
 
 
   const lastRow = sh.getLastRow();
-
-
-
   if (lastRow < 2) throw new Error('EPC_DATA_EMPTY');
 
-
-
-
-
-
-
-  const rows = sh.getRange(2, 1, lastRow - 1, 5).getValues();
+  // EPC_DATA is a compact chunk table. Bound the scan to avoid accidental
+  // formatting/old rows making every startup read much larger than necessary.
+  const scanRows = Math.min(Math.max(lastRow - 1, 1), 100);
+  const rows = sh.getRange(2, 1, scanRows, 5).getValues();
 
 
 
