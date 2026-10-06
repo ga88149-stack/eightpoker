@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eight Poker Management</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-theme="dark">
+<aside class="sidebar">
+  <div class="brand"><span class="mark">8</span><div><b>Eight Poker</b><small>MANAGEMENT V1</small></div></div>
+  <nav id="nav">
+    <button class="active" data-page="dashboard">▦ <span>總覽</span></button>
+    <button data-page="members">♙ <span>會員資料</span></button>
+    <button data-page="events">♢ <span>賽事管理</span></button>
+    <button data-page="settlement">⇄ <span>分帳報表</span></button>
+    <button data-page="accounting">▤ <span>帳務管理</span></button>
+    <button data-page="activities">☆ <span>活動專區</span></button>
+    <button data-page="devices">▣ <span>設備管理</span></button>
+    <button data-page="settings">⚙ <span>系統設定</span></button>
+  </nav>
+  <div class="sidebar-foot"><button id="themeBtn">☀ 一般模式</button><small id="syncState">資料庫：尚未連線</small></div>
+</aside>
+<main>
+<header><div><h1 id="pageTitle">總覽</h1><p id="businessDayLabel">營業日</p></div><div class="header-actions"><input type="date" id="globalDate"><button class="gold" id="refreshBtn">重新整理</button></div></header>
+<section id="dashboard" class="page active">
+ <div class="toolbar card"><div><label>查詢區間</label><input type="date" id="rangeFrom"> ～ <input type="date" id="rangeTo"></div><button class="gold">查詢並總計</button></div>
+ <div class="kpis">
+  <article class="card"><small>總會員數</small><strong id="kMembers">—</strong><em>正式會員</em></article>
+  <article class="card"><small>本月新增會員</small><strong id="kNewMembers">—</strong><em>依營業日</em></article>
+  <article class="card"><small>累計總營收</small><strong id="kRevenue">—</strong><em>實收行政費</em></article>
+  <article class="card"><small>本月營收</small><strong id="kMonthRevenue">—</strong><em>本月實收</em></article>
+  <article class="card"><small>總累計 JP</small><strong id="kJP">—</strong><em>JP Balance</em></article>
+  <article class="card"><small>本月累計 JP</small><strong id="kMonthJP">—</strong><em>本月提撥</em></article>
+ </div>
+ <div class="grid2">
+  <article class="card"><div class="card-title"><h2>賽事場次</h2><span>總計 / 本月</span></div><div id="eventLevelSummary" class="empty">等待資料庫連線</div></article>
+  <article class="card"><div class="card-title"><h2>當日營收</h2><span id="todayDate"></span></div>
+   <div class="money-grid"><div><small>行政費收入</small><b>—</b></div><div><small>優惠支出</small><b>—</b></div><div><small>折扣支出</small><b>—</b></div><div><small>JP</small><b>—</b></div><div><small>其他支出</small><b>—</b></div><div class="accent"><small>實收行政費</small><b>—</b></div></div>
+  </article>
+ </div>
+</section>
+<section id="members" class="page">
+ <div class="toolbar card"><input class="search" placeholder="搜尋姓名 / POKERFANS ID / 綽號 / 分帳群組"><div><button>＋ 新增會員</button><button>欄位設定</button></div></div>
+ <article class="card table-card"><div class="card-title"><h2>會員資料</h2><span>Form Responses 1 雙向同步</span></div><table><thead><tr><th>會員編號</th><th>姓名</th><th>綽號</th><th>分帳群組</th><th>參賽場次</th><th>總組數</th><th>盈虧</th><th>消費佔比</th><th>最近到店</th><th></th></tr></thead><tbody><tr><td colspan="10" class="empty">等待 Google Sheet API 連線</td></tr></tbody></table></article>
+</section>
+<section id="events" class="page">
+ <div class="toolbar card"><div><input type="date"><button>今天</button></div><button class="gold">＋ 建立賽事</button></div>
+ <div class="grid3"><article class="card module"><b>賽事設定</b><p>名稱、時間、級別、標準/自訂收費、JP、優惠門檻、預設規則</p></article><article class="card module"><b>玩家 KEYIN</b><p>關鍵字加入、座位、買入/重買、優惠、支付、單場分帳群組</p></article><article class="card module"><b>籌碼清算 / ICM</b><p>差額歸零後計算，最低 100，可人工調整，A4 滿版列印</p></article></div>
+ <article class="card"><div class="card-title"><h2>當日賽事</h2><span>依營業日歸屬</span></div><div class="empty">尚未載入賽事</div></article>
+</section>
+<section id="settlement" class="page"><article class="card"><div class="card-title"><h2>分帳報表</h2><span>跨賽事統一帳表</span></div><div class="empty">群組篩選、未分帳、全組列印與盈虧色彩將在此顯示</div></article></section>
+<section id="accounting" class="page"><div class="grid2"><article class="card"><div class="card-title"><h2>每日總帳</h2><span>自動彙總</span></div><div class="empty">行政費、各類優惠、入會費、JP、額外收入/支出</div></article><article class="card"><div class="card-title"><h2>獨立場次帳務</h2><span>不併入總帳</span></div><div class="empty">獨立收支與 JP</div></article></div></section>
+<section id="activities" class="page"><div class="activity-grid">
+ <article class="card module"><b>每週任務卡</b><p>天數 / 場次達標與名單</p></article><article class="card module"><b>開桌先鋒</b><p>每場前 4 名與排名統計</p></article><article class="card module"><b>週排行榜</b><p>籌碼淨勝值、加倍日期/時間</p></article><article class="card module"><b>獵人排行榜</b><p>活動期間與紀錄</p></article><article class="card module"><b>保護傘計畫</b><p>規則、登記、查詢</p></article><article class="card module"><b>雙十狩王</b><p>獎池、HP、攻擊與擊殺</p></article>
+ </div></section>
+<section id="devices" class="page"><article class="card"><div class="card-title"><h2>DISPLAY 設備</h2><button class="gold">＋ 新增設備</button></div><p class="muted">每台設備可獨立設定活動、輪播順序、各頁秒數、字體大小、排名筆數、姓名/會員編號與顯示欄位。</p><div class="empty">尚未連接設備</div></article></section>
+<section id="settings" class="page"><div class="grid2"><article class="card"><h2>營業日設定</h2><div class="form-row"><label>開始時間<input type="time" id="businessStart" value="16:00"></label><label>結束時間<input type="time" id="businessEnd" value="07:00"></label></div><p class="muted">跨午夜資料仍歸屬前一個營業日。所有賽事、帳務、活動與排行榜共用同一規則。</p><button class="gold">儲存設定</button></article><article class="card"><h2>資料來源</h2><p><b>Google Sheet</b><br>Form Responses 1 = 會員主表<br>EPC_DATA = 舊資料 migration source</p><p class="status">● Apps Script API 尚未部署</p></article></div></section>
+</main>
+<script src="app.js"></script>
+</body></html>
