@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>EIGHT POKER MANAGEMENT V2.0.4</title>
+<title>EIGHT POKER MANAGEMENT V2.0.6</title>
 <style>
 :root{--bg:#0b0f14;--card:#121922;--card2:#17212c;--text:#eef3f8;--muted:#91a0b2;--line:#263443;--accent:#d6b35a;--good:#49c27d;--bad:#ff6b6b}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif}
@@ -1819,7 +1819,7 @@ main{margin-left:0!important;width:auto!important;max-width:none!important;paddi
  }catch(_){document.documentElement.setAttribute('data-epc-theme','dark')}
 })();
 </script><body><script>window.EPC_RECOVERY_READONLY=false;</script>
-<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V2.0.4</span></div></header>
+<header><div class="brand"><b>EIGHT</b> Poker Management <span class="brand-version">V2.0.6</span></div></header>
 <nav id="nav">
 <button data-page="dashboard" class="active">總覽</button>
 <button data-page="members">會員</button>
@@ -2961,7 +2961,9 @@ async function eightReloadMembers_(){
  eightMemberStatus_('正在從 Google Sheet 讀取會員…');
  try{
    // This read must not mark an uninitialized full database ready for writes.
-   const result=await eightReadCloudJson_('load');
+   let result;
+   try{result=await eightReadCloudJson_('members');}
+   catch(_){result=await eightReadCloudJson_('load');}
    if(!result.ok||!Array.isArray(result.members))throw new Error(result.error||'會員 API 回傳格式不正確');
    const members=result.members.filter(m=>m&&String(m.id||'').trim());
    if(result.members.length&&!members.length)throw new Error('會員資料缺少會員編號');
@@ -3734,31 +3736,46 @@ function editMember(id){
  window.scrollTo({top:0,behavior:'smooth'});
 }
 async function saveMemberEdit(){
- let m=db.members.find(x=>x.id===editingMemberId); if(!m)return cancelMemberEdit();
+ let m=db.members.find(x=>String(x.id)===String(editingMemberId)); if(!m)return cancelMemberEdit();
  let name=$('mName').value.trim(); if(!name)return alert('請輸入會員名稱');
- m.name=name;
- m.group=$('mGroup').value.trim();
- m.note=$('mNote').value.trim();
- // 先把 EPC 專屬欄位（結帳群組/備註）寫入本機，再立即寫入 EPC_DATA。
- localStorage.setItem('epcV1',JSON.stringify(db));
- cancelMemberEdit();
- renderMemberRows();
- render();
- actionMsg(`會員「${m.name}」資料已修改`);
- if(cloudReady){
-   try{
-     await saveCloudNow();
-     // 資料庫快照完成後才重新抓 Form Responses 1。
-     // mergeFormMembers 會保留 EPC_DATA 的 group / note / history。
-     await refreshFormMembers(false);
-     renderMemberRows();
-   }catch(err){
-     console.error('member edit cloud save failed',err);
-     setCloudState('● 修改已存本機｜資料庫同步失敗',true);
+ const group=$('mGroup').value.trim(),note=$('mNote').value.trim();
+ const old={name:m.name||'',group:m.group||'',note:m.note||''};
+ const next={...m,name,group,note};
+ const button=$('memberSaveBtn');if(button)button.disabled=true;
+ try{
+   if(!cloudReady||!cloudBase)throw new Error('請先完成雲端資料載入');
+   setCloudState('● 正在同步會員修改…');
+   // Update the source member row when this member came from Google Form Responses 1.
+   if(String(m.source||'').includes('Form Responses')){
+     const result=await cloudPost({action:'updateMember',member:{id:String(m.id),name}});
+     if(!result||result.ok!==true)throw new Error(result&&result.error||'會員主資料更新失敗');
    }
- }else{
-   setCloudState('● 修改已存本機｜等待資料庫連線');
- }
+   Object.assign(m,{name,group,note});
+   // persist() records field changes and queues the cross-device EPC snapshot save.
+   persist();
+   cancelMemberEdit();
+   renderMemberRows();render();
+   const saved=await saveCloudNow();
+   if(!saved)throw new Error('會員修改已保留本機，但雲端同步尚未完成');
+   const verified=await cloudGet('load');
+   const vm=(verified.members||[]).find(x=>String(x.id)===String(m.id));
+   if(!vm||String(vm.name||'')!==name)throw new Error('雲端尚未確認會員修改');
+   // Re-apply EPC group/note from the confirmed saved snapshot; form refresh must not overwrite them.
+   db=preserveMembers_(db,verified.data,verified.members);
+   const confirmed=db.members.find(x=>String(x.id)===String(m.id));
+   if(confirmed){confirmed.name=name;confirmed.group=group;confirmed.note=note;}
+   localStorage.setItem('epcV1',JSON.stringify(db));epcLastPersistSnapshot_=cloneCloud_(db);
+   renderMemberRows();
+   actionMsg(`會員「${name}」修改完成，雲端確認成功`);
+   setCloudState('● 會員修改同步完成｜Revision '+cloudRevision);
+ }catch(err){
+   console.error('member edit cloud save failed',err);
+   // Restore the pre-edit object if no cloud write was confirmed.
+   Object.assign(m,old);localStorage.setItem('epcV1',JSON.stringify(db));renderMemberRows();
+   setCloudState('⚠ 會員修改失敗｜'+String(err.message||err),true);
+   actionMsg('會員修改失敗：'+String(err.message||err),true);
+   editingMemberId=null;
+ }finally{if(button)button.disabled=false;}
 }
 function cancelMemberEdit(){
  editingMemberId=null;
@@ -6527,6 +6544,7 @@ async function epcShowRecoveryAudit_(){
  }catch(e){alert("唯讀盤點失敗："+String(e&&e.message||e));}
 }
 </script></body></html>
+
 
 
 
