@@ -2867,70 +2867,32 @@ function startLiveSync_(){
  },1500);
 }
 async function initializeCloud(){
- if(window.EPC_RECOVERY_READONLY){cloudReady=false;setCloudState('● 10/3 唯讀基線｜已禁止舊資料庫覆蓋');render();return;}
- setCloudState('● 本機已儲存｜正在連接資料庫…');
+ setCloudState('● 正在載入 Google 資料…');
  try{
    const res=await cloudGet('load');
-   const serverRevision=Number(res.revision||0);
-   const hasRemote=!!(res.data&&typeof res.data==='object');
-   let remote=hasRemote?cloneCloud_(res.data):null;
-   if(remote)remote=preserveMembers_(db,remote,res.members);
-
-   if(remote){
-     if(localDirty){
-       backupLocal('startup-three-way-merge-v2');
-       db=mergeCloud3_(cloudBase||remote,db,remote);
-       db=preserveManualDiscountEdits_(db,db);
-     db=preserveActivityEdits_(db,db);
-     db=preserveEventEdits_(db,db);
-       db=preserveMembers_(db,db,res.members);
-       cloudRevision=serverRevision;
-       setCloudBase_(remote);
-       localStorage.setItem('epcV1',JSON.stringify(db));
-       localStorage.setItem('epcCloudRevision',String(cloudRevision));
-       localStorage.setItem('epcLocalDirty','1');
-       cloudReady=true;
-       render();
-       setCloudState('● 已合併資料庫｜正在補同步本機修改…');
-       await saveCloudNow(false);
-       return;
-     }else{
-       backupLocal('startup-cloud-load-v2');
-       db=remote;
-       cloudRevision=serverRevision;
-       setCloudBase_(remote);
-       localStorage.setItem('epcV1',JSON.stringify(db));
-       localStorage.setItem('epcCloudRevision',String(cloudRevision));
-       localStorage.removeItem('epcLocalDirty');
-       localDirty=false;
-     }
-   }else{
-     db=preserveMembers_(db,db,res.members);
-     cloudRevision=serverRevision;
-     setCloudBase_(db);
-     localDirty=true;
-     localStorage.setItem('epcLocalDirty','1');
-   }
-
+   if(!res || !res.data || typeof res.data!=='object')throw new Error('GOOGLE_DATA_EMPTY');
+   let remote=cloneCloud_(res.data);
+   remote=preserveMembers_({members:[]},remote,res.members);
+   db=remote;
+   cloudRevision=Number(res.revision||0);
+   setCloudBase_(remote);
+   localDirty=false;
+   cloudPending=false;
+   localStorage.removeItem('epcLocalDirty');
+   localStorage.setItem('epcCloudRevision',String(cloudRevision));
+   localStorage.setItem('epcV1',JSON.stringify(db));
    if(!db.settings)db.settings={};
    if(!db.settings.businessStart)db.settings.businessStart='16:00';
    if(!db.settings.businessEnd)db.settings.businessEnd='07:00';
    if(!Array.isArray(db.dailySettlementReports))db.dailySettlementReports=[];
    cloudReady=true;
    epcLastPersistSnapshot_=cloneCloud_(db);
-   localStorage.setItem('epcV1',JSON.stringify(db));
    render();
-
-   if(!hasRemote)await saveCloudNow(false);
-   else{
-     const t=res.updatedAt?new Date(res.updatedAt).toLocaleTimeString():new Date().toLocaleTimeString();
-     setCloudState('● 資料庫已載入｜Revision '+cloudRevision+'｜'+t);
-   }
+   setCloudState('● Google 資料已載入｜Revision '+cloudRevision);
  }catch(err){
    cloudReady=false;
-   setCloudState('⚠ 資料庫暫時離線｜本機資料安全保存｜將自動重連',true);
-   console.error('EPC cloud init failed',err);
-   scheduleCloudReconnect_();
+   console.error('Google startup load failed',err);
+   setCloudState('⚠ Google 資料載入失敗｜'+String(err&&err.message||err),true);
    render();
  }
 }
@@ -2991,6 +2953,9 @@ async function saveCloudNow(force=false){
    const remoteRevision=Number(latest.revision||0);
    const base=cloudBase&&typeof cloudBase==='object'?cloneCloud_(cloudBase):cloneCloud_(remote);
    const localAtStart=cloneCloud_(db);
+   if((!localAtStart.members||!localAtStart.members.length) && Array.isArray(remote.members) && remote.members.length){
+     throw new Error('EMPTY_LOCAL_WRITE_BLOCKED');
+   }
 
    let candidate=mergeCloud3_(base,localAtStart,remote);
    candidate=preserveManualDiscountEdits_(localAtStart,candidate);
