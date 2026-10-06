@@ -13,7 +13,7 @@ const EIGHT_SETTINGS_SHEET='EPC_系統設定';
 function eightPokerApi_(req){
   try{
     switch(String(req.action||'')){
-      case 'eight.ping': return {ok:true,service:'Eight Poker API',version:'V1.5'};
+      case 'eight.ping': return eightHealth_();
       case 'eight.bootstrap': return eightBootstrap_();
       case 'eight.members.list': return {ok:true,members:eightListMembers_()};
       case 'eight.members.create': return {ok:true,member:eightCreateMember_(req.member||{})};
@@ -182,3 +182,5 @@ function eightSaveAllEventPlayers_(eventId,players){
     });SpreadsheetApp.flush();return eightListEventPlayers_(eventId)
   }finally{lock.releaseLock()}
 }
+
+function eightHealth_(){const ss=eightDb_();return {ok:true,version:'V1.6',spreadsheet:ss.getId(),memberSheet:!!ss.getSheetByName(EIGHT_MEMBER_SHEET),metaSheet:!!ss.getSheetByName(EIGHT_META_SHEET),eventSheet:!!ss.getSheetByName(EIGHT_EVENT_SHEET),playerSheet:!!ss.getSheetByName(EIGHT_PLAYER_SHEET),time:new Date().toISOString()}}
